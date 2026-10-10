@@ -39,7 +39,13 @@ import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node'
 import { z } from 'zod'
 import { type AgentEnv, agentEnv, loadRootEnv } from './env'
 import { interruptionWords, MIN_INTERRUPTION_MS, MIN_INTERRUPTION_WORDS } from './interruptions'
-import { ConversationLLM, DEFAULT_HEDGE_AFTER_MS, hedgeStream } from './llm'
+import {
+  ConversationLLM,
+  chatStream,
+  DEFAULT_HEDGE_AFTER_MS,
+  GATEWAY_ROUTES,
+  hedgeStream,
+} from './llm'
 import { PhraseCache } from './phrases'
 import { buildInstructions, NOTE_PREFIX } from './prompt'
 import { MaiSTT } from './stt-mai'
@@ -116,7 +122,8 @@ export class BellAgent extends voice.Agent {
   readonly #bell: BellTools
   readonly #phrases: PhraseCache
   readonly #roomLanguage: LanguagePreference
-  readonly #hedgeMs: number
+  /** When the second attempt starts (gateway: backup providers; direct: identical request). */
+  readonly #raceAfterMs: number
   /** Whether the LLM reply being generated has spoken text (the tool phrase). */
   #replyHasText = false
   /** Whether "One moment." was already said for this reply. */
@@ -126,13 +133,13 @@ export class BellAgent extends voice.Agent {
     language: LanguagePreference,
     bell: BellTools,
     phrases: PhraseCache,
-    options: { hedgeMs?: number } = {},
+    options: { raceAfterMs?: number } = {},
   ) {
     super({ instructions: buildInstructions(language), tools: buildTools(bell) })
     this.#bell = bell
     this.#phrases = phrases
     this.#roomLanguage = language
-    this.#hedgeMs = options.hedgeMs ?? DEFAULT_HEDGE_AFTER_MS
+    this.#raceAfterMs = options.raceAfterMs ?? DEFAULT_HEDGE_AFTER_MS
   }
 
   /** The patient just tapped the mic: a short intro they can talk over, then just listen. */
@@ -161,8 +168,11 @@ export class BellAgent extends voice.Agent {
   }
 
   /**
-   * One LLM reply. Hedged: if nothing arrives within the hedge delay, an identical second request
-   * races the first (only the winner is forwarded). Logs the time to first chunk every turn.
+   * One LLM reply, raced. On the AI Gateway, attempt 1 is pinned to Cerebras (fastest median, but
+   * it spikes) and attempt 2, started GATEWAY_RACE_MS later if nothing has arrived, to the backup
+   * providers; on direct Cerebras, attempt 2 is an identical request. The first real chunk wins
+   * and the other request is aborted (only the winner is forwarded, so tool calls never double).
+   * Logs the winner and the time to first chunk every turn.
    * Whitespace before the first words is dropped, so a "stay silent" reply (Qwen sends "\n\n" for
    * talk not meant for it) is truly empty: no speech, no assistant message. Also watches for
    * spoken text, so a tool call without a phrase gets the fallback phrase.
@@ -170,15 +180,39 @@ export class BellAgent extends voice.Agent {
   override async llmNode(
     ...args: Parameters<voice.Agent['llmNode']>
   ): ReturnType<voice.Agent['llmNode']> {
+    const [chatCtx, toolCtx, modelSettings] = args
     this.#replyHasText = false
     this.#fallbackSaid = false
-    const stream = await hedgeStream(() => super.llmNode(...args), {
-      afterMs: this.#hedgeMs,
+    const model = this.session.llm
+    const gateway = model instanceof ConversationLLM && model.kind === 'gateway'
+    const start =
+      model instanceof ConversationLLM
+        ? async (attempt: 'primary' | 'hedge') => {
+            const route = gateway
+              ? GATEWAY_ROUTES[attempt === 'primary' ? 'primary' : 'backup']
+              : undefined
+            const params = {
+              chatCtx,
+              toolCtx,
+              toolChoice: modelSettings.toolChoice,
+              connOptions: this.session.connOptions.llmConnOptions,
+            }
+            return chatStream(model, params, route) as ReadableStream<LlmChunk>
+          }
+        : () => super.llmNode(...args)
+    const stream = await hedgeStream(start, {
+      afterMs: this.#raceAfterMs,
       isFirstChunk: isResponseChunk,
       onSettled: ({ fired, winner, firstChunkMs }) => {
-        const ms = Math.round(firstChunkMs)
-        if (fired) log().info({ fired, winner, firstChunkMs: ms }, 'llm hedge')
-        log().info({ firstChunkMs: ms, hedged: fired }, 'llm first chunk')
+        log().info(
+          {
+            path: gateway ? 'gateway' : 'cerebras',
+            winner: gateway ? (winner === 'primary' ? 'cerebras' : 'backup') : winner,
+            raced: fired,
+            firstChunkMs: Math.round(firstChunkMs),
+          },
+          'llm first chunk',
+        )
       },
     })
     if (!stream) return stream
@@ -537,8 +571,9 @@ export default defineAgent({
     const session = new voice.AgentSession({
       ...models,
       llm: new ConversationLLM({
-        apiKey: env.cerebrasApiKey,
-        model: env.cerebrasAgentModel,
+        kind: env.llm.provider,
+        apiKey: env.llm.apiKey,
+        model: env.llm.model,
         reasoningEffort: env.cerebrasAgentReasoningEffort,
       }),
       turnHandling: TURN_HANDLING,
@@ -567,7 +602,9 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.Close, () => bell.close())
 
     await session.start({
-      agent: new BellAgent(job.language, bell, phrases, { hedgeMs: env.cerebrasAgentHedgeMs }),
+      agent: new BellAgent(job.language, bell, phrases, {
+        raceAfterMs: env.llm.provider === 'gateway' ? env.llm.raceMs : env.llm.hedgeMs,
+      }),
       room: ctx.room,
       // Typed text goes through the web app.
       inputOptions,
@@ -579,7 +616,7 @@ export default defineAgent({
         language: job.language,
         stt: env.stt.provider,
         noiseCancellation: 'noiseCancellation' in inputOptions ? 'bvc' : 'off',
-        llm: env.cerebrasAgentModel,
+        llm: `${env.llm.provider}:${env.llm.model}`,
         reasoningEffort: env.cerebrasAgentReasoningEffort,
       },
       'voice session started',

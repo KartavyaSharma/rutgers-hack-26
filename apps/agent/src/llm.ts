@@ -1,30 +1,112 @@
-// The conversation LLM: Cerebras through the LiveKit Cerebras plugin, which is the OpenAI plugin's
-// LLM with msgpack + gzip request bodies. Neither plugin's options can set `reasoning_effort` for a
-// non-OpenAI model (the OpenAI plugin only defaults it for gpt-5*), so this subclass adds it to
-// every request through `chat({ extraKwargs })`: the OpenAI plugin copies extraKwargs into the
-// request options and LiveKit spreads them into the chat.completions body. The framework's own
-// llm.chat() call passes no extraKwargs, so nothing is overwritten.
+// The conversation LLM, through one of two OpenAI-compatible paths:
+// - 'gateway' (default): the Vercel AI Gateway (https://ai-gateway.vercel.sh/v1), model
+//   'alibaba/qwen3.8-27b'. Reasoning goes as `reasoning: { effort }`, and each request can pin
+//   its providers with `providerOptions: { gateway: { only, order } }`, which is how BellAgent
+//   races Cerebras against a steadier backup (see GATEWAY_ROUTES).
+// - 'cerebras': Cerebras directly (msgpack + gzip bodies), reasoning as `reasoning_effort`.
+// Both use the LiveKit Cerebras plugin, which is the OpenAI plugin's LLM; for the gateway its
+// Cerebras-only body encoding is switched off. The extra body fields go through
+// `chat({ extraKwargs })`, which LiveKit spreads into the chat.completions body; the framework's
+// own llm.chat() call passes no extraKwargs, so nothing is overwritten.
+import type { llm } from '@livekit/agents'
 import * as cerebras from '@livekit/agents-plugin-cerebras'
 import type { ReasoningEffort } from './env'
 
 type ChatParams = Parameters<cerebras.LLM['chat']>[0]
 
+export const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
+
+/** `providerOptions.gateway` for one request: which providers may serve it, in what order. */
+export interface GatewayRoute {
+  readonly only: readonly string[]
+  readonly order?: readonly string[]
+}
+
+/**
+ * The gateway race. Primary: Cerebras (fastest median, ~240 ms, but it spikes to 1-2 s when
+ * queueing). Backup, started GATEWAY_RACE_MS later: the steadier of the measured providers,
+ * with the other one as its fallback. See the measurement in the agent's report.
+ */
+export const GATEWAY_ROUTES = {
+  primary: { only: ['cerebras'] },
+  backup: { only: ['wafer', 'deepinfra'], order: ['wafer', 'deepinfra'] },
+} as const satisfies Record<string, GatewayRoute>
+
+export type LlmKind = 'gateway' | 'cerebras'
+
 export class ConversationLLM extends cerebras.LLM {
+  readonly kind: LlmKind
   readonly #reasoningEffort: ReasoningEffort
 
-  constructor(opts: { apiKey: string; model: string; reasoningEffort: ReasoningEffort }) {
+  constructor(opts: {
+    kind: LlmKind
+    apiKey: string
+    model: string
+    reasoningEffort: ReasoningEffort
+  }) {
     // Parallel tool calls on: "a pillow and some water" is two send_request calls in one reply,
     // and tools return no output, so there is no second step in which to make the other call.
-    super({ apiKey: opts.apiKey, model: opts.model, parallelToolCalls: true })
+    super(
+      opts.kind === 'gateway'
+        ? {
+            apiKey: opts.apiKey,
+            model: opts.model,
+            baseURL: GATEWAY_BASE_URL,
+            // plain JSON bodies: msgpack/gzip is a Cerebras-only optimization
+            gzipCompression: false,
+            msgpackEncoding: false,
+            parallelToolCalls: true,
+          }
+        : { apiKey: opts.apiKey, model: opts.model, parallelToolCalls: true },
+    )
+    this.kind = opts.kind
     this.#reasoningEffort = opts.reasoningEffort
   }
 
-  override chat(params: ChatParams): ReturnType<cerebras.LLM['chat']> {
-    return super.chat({
-      ...params,
-      extraKwargs: { ...params.extraKwargs, reasoning_effort: this.#reasoningEffort },
-    })
+  /** `route` pins the gateway providers for this one request (ignored for direct Cerebras). */
+  override chat(params: ChatParams, route?: GatewayRoute): ReturnType<cerebras.LLM['chat']> {
+    const extra =
+      this.kind === 'gateway'
+        ? {
+            reasoning: { effort: this.#reasoningEffort },
+            ...(route ? { providerOptions: { gateway: route } } : {}),
+          }
+        : { reasoning_effort: this.#reasoningEffort }
+    return super.chat({ ...params, extraKwargs: { ...params.extraKwargs, ...extra } })
   }
+}
+
+/**
+ * One chat request as a stream of chunks; cancelling the stream closes (aborts) the request.
+ * The same shape the framework's default llmNode returns.
+ */
+export function chatStream(
+  model: ConversationLLM,
+  params: ChatParams,
+  route?: GatewayRoute,
+): ReadableStream<llm.ChatChunk> {
+  const stream = model.chat(params, route)
+  let closed = false
+  const close = () => {
+    if (closed) return
+    closed = true
+    stream.close()
+  }
+  return new ReadableStream<llm.ChatChunk>({
+    async start(controller) {
+      try {
+        for await (const chunk of stream) controller.enqueue(chunk)
+        controller.close()
+      } catch (error) {
+        controller.error(error)
+      } finally {
+        close()
+      }
+    },
+    cancel() {
+      close()
+    },
+  })
 }
 
 /** Start a second, identical request when the first has produced nothing after this long. */
@@ -55,7 +137,7 @@ interface Attempt<T> {
  * An error before the hedge fires is rethrown; after it, the other attempt still gets its chance.
  */
 export async function hedgeStream<T>(
-  start: () => Promise<ReadableStream<T> | null>,
+  start: (attempt: 'primary' | 'hedge') => Promise<ReadableStream<T> | null>,
   options: {
     afterMs: number
     isFirstChunk: (chunk: T) => boolean
@@ -82,7 +164,7 @@ export async function hedgeStream<T>(
       (error: unknown) => ({ attempt, error }),
     )
 
-  const firstStream = await start()
+  const firstStream = await start('primary')
   if (!firstStream) return firstStream
   const primary = open('primary', firstStream)
 
@@ -105,7 +187,7 @@ export async function hedgeStream<T>(
     fired = true
     let second: ReadableStream<T> | null = null
     try {
-      second = await start()
+      second = await start('hedge')
     } catch {
       // the hedge could not start; keep waiting on the first request
     }

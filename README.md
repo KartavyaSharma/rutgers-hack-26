@@ -49,7 +49,8 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 | `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | text to speech |
 | `ELEVEN_MODEL` | agent | `eleven_v4_turbo` (default, low latency) or `eleven_v4` (higher quality) |
 | `TYPESAFE_API_KEY` | web, agent | Jev classifier (team, clinical, urgency); optional `TYPESAFE_MODEL` (default `jev-latest`) |
-| `CEREBRAS_API_KEY` | agent (web: backup router) | conversation LLM `qwen-3.8-27b` with `reasoning_effort: "low"` (`CEREBRAS_AGENT_MODEL`, `CEREBRAS_AGENT_REASONING_EFFORT`); also the backup Qwen JSON router (`routeText`) |
+| `LLM_PROVIDER` | agent | `gateway` (default with the gateway key): Qwen 3.8 27B through the AI Gateway, Cerebras raced against wafer/deepinfra; or `cerebras` (direct) |
+| `CEREBRAS_API_KEY` | agent (web: backup router) | direct conversation LLM `qwen-3.8-27b` with `reasoning_effort: "low"` (`CEREBRAS_AGENT_MODEL`, `CEREBRAS_AGENT_REASONING_EFFORT`); also the backup Qwen JSON router (`routeText`) |
 | `DATABASE_URL` | web | Postgres; unset means PGlite in `apps/web/.data/` |
 | `APP_URL` | agent | where the agent calls the web API, e.g. `http://localhost:3000` |
 | `AGENT_SHARED_SECRET` | web, agent | bearer token the agent uses for routed requests and notes |
@@ -88,7 +89,8 @@ packages/ui     design tokens (tokens.css from the design system) and base compo
   background voice cancellation (Krisp BVC, `NOISE_CANCELLATION`), so nearby conversations aren't heard, and short
   noises can't interrupt it. Fixed lines ("Go ahead, I'm listening.", "Sent. Someone's coming.") are pre-rendered
   per language so they play instantly. Red-flag phrases
-  are caught in code before the LLM and go straight to the nurse. Otherwise Qwen 3.8 (reasoning low) keeps it
+  are caught in code before the LLM and go straight to the nurse. Otherwise Qwen 3.8 (reasoning low, through the AI Gateway: Cerebras first, a steady backup provider raced in
+  after 250 ms) keeps it
   terse and conversational, and says a short phrase whenever it calls a tool: `send_request` (Jev classifies in the
   background, then the request is sent), `cancel_request` (corrections, "never mind"), `call_my_nurse`.
   All writes go through the web API (the only writer).

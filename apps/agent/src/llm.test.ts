@@ -53,7 +53,7 @@ const isFirstChunk = (chunk: string) => chunk.length > 0
 function run(attempts: Timed[][], afterMs: number) {
   const made = attempts.map((items) => timedStream(items))
   let next = 0
-  const start = vi.fn(async () => made[next++]?.stream ?? null)
+  const start = vi.fn(async (_attempt: 'primary' | 'hedge') => made[next++]?.stream ?? null)
   const outcomes: HedgeOutcome[] = []
   const result = hedgeStream(start, {
     afterMs,
@@ -98,6 +98,12 @@ describe('hedgeStream', () => {
     expect(start).toHaveBeenCalledTimes(2)
     expect(made[0]?.cancelled.value).toBe(true)
     expect(outcomes[0]).toMatchObject({ fired: true, winner: 'hedge' })
+  })
+
+  it('tells start() which attempt it is, so each can be routed differently', async () => {
+    const { start, result } = run([[{ at: 400, value: 'slow' }], [{ at: 10, value: 'fast' }]], 50)
+    expect(await readAll(await result)).toEqual(['fast'])
+    expect(start.mock.calls).toEqual([['primary'], ['hedge']])
   })
 
   it('keeps the first request when it still answers before the hedge', async () => {

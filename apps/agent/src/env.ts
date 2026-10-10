@@ -16,9 +16,17 @@ const REQUIRED_KEYS = [
   'LIVEKIT_API_KEY',
   'LIVEKIT_API_SECRET',
   'ELEVEN_API_KEY',
-  'CEREBRAS_API_KEY',
   'AGENT_SHARED_SECRET',
 ] as const
+
+export const LLM_PROVIDERS = ['gateway', 'cerebras'] as const
+export type LlmProvider = (typeof LLM_PROVIDERS)[number]
+/** The key each conversation LLM path needs. */
+const LLM_KEYS = { gateway: 'AI_GATEWAY_API_KEY', cerebras: 'CEREBRAS_API_KEY' } as const
+/** The conversation LLM on the AI Gateway (GATEWAY_AGENT_MODEL overrides it). */
+export const DEFAULT_GATEWAY_AGENT_MODEL = 'alibaba/qwen3.8-27b'
+/** GATEWAY_RACE_MS: when the backup providers start racing Cerebras on the gateway; 0 = off. */
+export const DEFAULT_GATEWAY_RACE_MS = 250
 
 export const STT_PROVIDERS = ['mai', 'deepgram'] as const
 export type SttProvider = (typeof STT_PROVIDERS)[number]
@@ -73,10 +81,23 @@ export function sttProvider(): SttProvider {
   return read(STT_KEYS.mai) ? 'mai' : 'deepgram'
 }
 
+const isLlmProvider = (value: unknown): value is LlmProvider =>
+  typeof value === 'string' && (LLM_PROVIDERS as readonly string[]).includes(value)
+
+/**
+ * LLM_PROVIDER ("gateway" | "cerebras"). Default: the AI Gateway when AI_GATEWAY_API_KEY is set,
+ * else Cerebras directly.
+ */
+export function llmProvider(): LlmProvider {
+  const chosen = read('LLM_PROVIDER')?.toLowerCase()
+  if (isLlmProvider(chosen)) return chosen
+  return read(LLM_KEYS.gateway) ? 'gateway' : 'cerebras'
+}
+
 /** Names of required variables that are missing. Never returns values. */
 export function missingEnv(): string[] {
-  const keys = [...REQUIRED_KEYS, STT_KEYS[sttProvider()]]
-  return keys.filter((key) => read(key) === undefined)
+  const keys = new Set<string>([...REQUIRED_KEYS, STT_KEYS[sttProvider()], LLM_KEYS[llmProvider()]])
+  return [...keys].filter((key) => read(key) === undefined)
 }
 
 /** Set-but-unusable optional variables, as one-line warnings (names and allowed values only). */
@@ -104,12 +125,29 @@ export function envWarnings(): string[] {
   if (provider !== undefined && !isSttProvider(provider.toLowerCase())) {
     warnings.push(`STT_PROVIDER must be one of ${STT_PROVIDERS.join(', ')}; using ${sttProvider()}`)
   }
+  const llm = read('LLM_PROVIDER')
+  if (llm !== undefined && !isLlmProvider(llm.toLowerCase())) {
+    warnings.push(`LLM_PROVIDER must be one of ${LLM_PROVIDERS.join(', ')}; using ${llmProvider()}`)
+  }
+  if (read('GATEWAY_RACE_MS') !== undefined && readMs('GATEWAY_RACE_MS') === undefined) {
+    warnings.push(
+      `GATEWAY_RACE_MS must be a whole number of ms (0 = off); using ${DEFAULT_GATEWAY_RACE_MS}`,
+    )
+  }
   return warnings
 }
 
 export type SttEnv =
   | { provider: 'mai'; aiGatewayApiKey: string }
   | { provider: 'deepgram'; deepgramApiKey: string }
+
+/**
+ * The conversation LLM. On the gateway, `raceMs` starts the backup providers racing Cerebras;
+ * on direct Cerebras, `hedgeMs` starts an identical second request. 0 turns either off.
+ */
+export type LlmEnv =
+  | { provider: 'gateway'; apiKey: string; model: string; raceMs: number }
+  | { provider: 'cerebras'; apiKey: string; model: string; hedgeMs: number }
 
 export interface AgentEnv {
   stt: SttEnv
@@ -119,11 +157,9 @@ export interface AgentEnv {
   /** undefined means the ElevenLabs plugin's default voice. */
   elevenVoiceId: string | undefined
   elevenModel: string
-  cerebrasApiKey: string
-  cerebrasAgentModel: string
+  llm: LlmEnv
+  /** CEREBRAS_AGENT_REASONING_EFFORT, for either LLM path. */
   cerebrasAgentReasoningEffort: ReasoningEffort
-  /** Hedge the conversation LLM after this many ms without output; 0 = off. */
-  cerebrasAgentHedgeMs: number
   /** Base URL of the web app, without a trailing slash. */
   appUrl: string
   agentSharedSecret: string
@@ -142,12 +178,23 @@ export function agentEnv(): AgentEnv {
     elevenApiKey: required('ELEVEN_API_KEY'),
     elevenVoiceId: read('ELEVEN_VOICE_ID'),
     elevenModel: read('ELEVEN_MODEL') ?? DEFAULT_ELEVEN_MODEL,
-    cerebrasApiKey: required('CEREBRAS_API_KEY'),
-    cerebrasAgentModel: read('CEREBRAS_AGENT_MODEL') ?? DEFAULT_CEREBRAS_AGENT_MODEL,
+    llm:
+      llmProvider() === 'gateway'
+        ? {
+            provider: 'gateway',
+            apiKey: required(LLM_KEYS.gateway),
+            model: read('GATEWAY_AGENT_MODEL') ?? DEFAULT_GATEWAY_AGENT_MODEL,
+            raceMs: readMs('GATEWAY_RACE_MS') ?? DEFAULT_GATEWAY_RACE_MS,
+          }
+        : {
+            provider: 'cerebras',
+            apiKey: required(LLM_KEYS.cerebras),
+            model: read('CEREBRAS_AGENT_MODEL') ?? DEFAULT_CEREBRAS_AGENT_MODEL,
+            hedgeMs: readMs('CEREBRAS_AGENT_HEDGE_MS') ?? DEFAULT_CEREBRAS_AGENT_HEDGE_MS,
+          },
     cerebrasAgentReasoningEffort: isReasoningEffort(effort)
       ? effort
       : DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT,
-    cerebrasAgentHedgeMs: readMs('CEREBRAS_AGENT_HEDGE_MS') ?? DEFAULT_CEREBRAS_AGENT_HEDGE_MS,
     appUrl: (read('APP_URL') ?? DEFAULT_APP_URL).replace(/\/+$/, ''),
     agentSharedSecret: required('AGENT_SHARED_SECRET'),
   }
