@@ -3,9 +3,9 @@
 //
 // There is no confirm step: a request is classified and sent right away. Each tool runs in the
 // background and its result is spoken through the injected `announce` callback. Results that land
-// close together (one utterance, two needs) are announced once: "A pillow and some water. Sent.
-// Someone will be with you soon." Patient-facing text never names a team. Transcripts are never
-// logged.
+// close together (one utterance, two needs) are confirmed once, with a fixed phrase and no
+// read-back: "Sent." / "Both sent." / "All sent." (or "Your nurse is on the way."). Patient-facing
+// text never names a team. Transcripts are never logged.
 import {
   classifyRequest as coreClassifyRequest,
   detectRedFlag,
@@ -88,8 +88,6 @@ interface SentRequest {
 /** One result waiting to be announced. */
 export interface AnnouncedResult {
   kind: 'sent' | 'nurse' | 'failed'
-  /** Spoken before "Sent." for normal requests. */
-  readBack?: string
   /** For the LLM's note. */
   label: string
   language: string
@@ -224,8 +222,6 @@ export class BellTools {
     }
     this.#queue({
       kind: nurse ? 'nurse' : 'sent',
-      // core's patientReply is the read-back, checked so it never names a team
-      readBack: nurse ? undefined : decision.patientReply.trim(),
       label,
       language: decision.language,
       requestId: saved.requestId,
@@ -349,7 +345,10 @@ export class BellTools {
   }
 }
 
-/** One spoken line (and one note) for results that landed together. */
+/**
+ * One spoken line (and one note) for results that landed together. No read-backs: the patient
+ * already heard their own words. If the nurse was alerted, that is all they need to hear.
+ */
 export function composeAnnouncement(results: readonly AnnouncedResult[]): Announcement | undefined {
   const last = results.at(-1)
   if (!last) return undefined
@@ -360,22 +359,14 @@ export function composeAnnouncement(results: readonly AnnouncedResult[]): Announ
 
   const spoken: string[] = []
   const notes: string[] = []
-  if (sent.length > 0) {
-    const readBack = joinReadBacks(
-      sent.map((r) => r.readBack ?? ''),
-      language,
-    )
-    spoken.push(
-      readBack
-        ? joinSentences([readBack, patientMessage('sent', language)], language)
-        : patientMessage('sent', language),
-    )
-    notes.push(`Sent: ${describe(sent)}.`)
-  }
   if (nurse.length > 0) {
     spoken.push(patientMessage('nurse_notified', language))
-    notes.push(`Sent to the nurse right away: ${describe(nurse)}.`)
+  } else if (sent.length > 0) {
+    const key = sent.length === 1 ? 'sent' : sent.length === 2 ? 'sent_two' : 'sent_many'
+    spoken.push(patientMessage(key, language))
   }
+  if (nurse.length > 0) notes.push(`Sent to the nurse right away: ${describe(nurse)}.`)
+  if (sent.length > 0) notes.push(`Sent: ${describe(sent)}.`)
   if (failed.length > 0) {
     spoken.push(patientMessage('save_failed', language))
     notes.push(
@@ -384,7 +375,7 @@ export function composeAnnouncement(results: readonly AnnouncedResult[]): Announ
   }
   return {
     say: joinSentences(spoken, language),
-    note: `${NOTE_PREFIX} ${notes.join(' ')} The patient heard this.`,
+    note: `${NOTE_PREFIX} ${notes.join(' ')} The patient heard the confirmation; do not repeat it.`,
   }
 }
 
@@ -428,36 +419,9 @@ export class EmergencyNotes {
   }
 }
 
-const NO_CASE_CHANGE = new Set(['de'])
 const NO_SPACE = new Set(['ja', 'zh'])
-const TERMINALS: Record<string, string> = { ja: '。', zh: '。', hi: '।' }
 
 const baseLanguage = (language: string): string => language.split(/[-_]/)[0]?.toLowerCase() || 'en'
-
-/**
- * Joins short read-backs into one sentence in the patient's language:
- * ["An extra pillow.", "Some water."] -> "An extra pillow and some water."
- */
-export function joinReadBacks(items: readonly string[], language: string): string {
-  const cleaned = items.map((item) => item.trim()).filter((item) => item.length > 0)
-  if (cleaned.length <= 1) return cleaned[0] ?? ''
-  const lang = baseLanguage(language)
-  const parts = cleaned.map((item, index) => {
-    const part = item.replace(/[\s.!?。！？।]+$/u, '')
-    // "Some water" -> "some water" mid-sentence, but not "TV" and never German nouns.
-    if (index > 0 && !NO_CASE_CHANGE.has(lang) && /^\p{Lu}\p{Ll}/u.test(part)) {
-      return part.charAt(0).toLowerCase() + part.slice(1)
-    }
-    return part
-  })
-  let list: string
-  try {
-    list = new Intl.ListFormat(lang, { style: 'long', type: 'conjunction' }).format(parts)
-  } catch {
-    list = parts.join(', ')
-  }
-  return `${list}${TERMINALS[lang] ?? '.'}`
-}
 
 /** Joins whole sentences, with no space for Japanese and Chinese. */
 export function joinSentences(sentences: readonly string[], language: string): string {

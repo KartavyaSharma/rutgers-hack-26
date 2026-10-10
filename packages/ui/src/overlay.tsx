@@ -52,6 +52,8 @@ export interface DialogProps extends OverlayBase {
   title: string
   /** Accent line under the title, e.g. "Request sent". */
   status?: string
+  /** Content between the title (and status) and the body, e.g. a list of what was sent. */
+  children?: ReactNode
   /** Main text. */
   body?: string
   /** The buttons. Each should close or move on; there is no hidden close. */
@@ -64,6 +66,7 @@ export function Dialog({
   eyebrow,
   title,
   status,
+  children,
   body,
   actions,
   className,
@@ -89,6 +92,7 @@ export function Dialog({
         {title}
       </DialogPrimitive.Title>
       {status ? <p className="text-label font-bold text-action-ink">{status}</p> : null}
+      {children}
       {body ? (
         <DialogPrimitive.Description className="text-lead leading-body">
           {body}

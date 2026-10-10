@@ -8,6 +8,18 @@ import { ApiError, fetchVoiceToken } from '@/lib/client/api'
 export type VoiceState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking'
 export type VoiceMode = 'request' | 'emergency'
 
+/** One spoken segment, as the agent publishes it on the 'lk.transcription' text stream topic. */
+export interface TranscriptEntry {
+  /** `${from}:${lk.segment_id}` */
+  key: string
+  from: 'patient' | 'agent'
+  text: string
+  /** False while the words may still change (interim speech-to-text, or a reply still streaming). */
+  final: boolean
+}
+
+const TRANSCRIPTION_TOPIC = 'lk.transcription'
+
 /** Hang up this long after the agent finishes a reply and nobody speaks. */
 const IDLE_AFTER_REPLY_MS: Record<VoiceMode, number> = { request: 12_000, emergency: 60_000 }
 /** Give up if the agent has not joined by then. */
@@ -65,6 +77,7 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
   const [state, setState] = useState<VoiceState>('idle')
   const [mode, setMode] = useState<VoiceMode | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const [notConfigured, setNotConfigured] = useState(false)
 
   const roomRef = useRef<Room | null>(null)
@@ -103,6 +116,7 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
       const isCurrent = () => sessionRef.current === session
       setError(null)
       setMode(nextMode)
+      setTranscript([])
       setState('connecting')
 
       try {
@@ -118,6 +132,47 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
         if (!isCurrent()) return
 
         const room = new Room({ adaptiveStream: false, dynacast: false })
+
+        // Live transcript. The agent publishes both sides on 'lk.transcription', with the stream's
+        // sender set to whoever spoke: the patient's identity for their words, its own for its
+        // replies. Patient words come as one stream per interim update (the whole text so far)
+        // plus one marked lk.transcription_final; a reply comes as one stream of deltas that
+        // closes when the sentence is done. Replacing a segment's text with each stream's
+        // accumulated text handles both.
+        const upsertSegment = (entry: TranscriptEntry) =>
+          setTranscript((prev) => {
+            const index = prev.findIndex((e) => e.key === entry.key)
+            if (index === -1) return entry.text ? [...prev, entry] : prev
+            const current = prev[index]
+            if (!current || (current.final && !entry.final)) return prev
+            const next = prev.slice()
+            next[index] = { ...entry, text: entry.text || current.text }
+            return next
+          })
+        room.registerTextStreamHandler(TRANSCRIPTION_TOPIC, (reader, participantInfo) => {
+          const attributes = reader.info.attributes ?? {}
+          const segmentId = attributes['lk.segment_id'] ?? reader.info.id
+          const from: TranscriptEntry['from'] =
+            participantInfo.identity === room.localParticipant.identity ? 'patient' : 'agent'
+          const markedFinal = attributes['lk.transcription_final'] === 'true'
+          const key = `${from}:${segmentId}`
+          void (async () => {
+            let text = ''
+            try {
+              for await (const chunk of reader) {
+                if (!isCurrent()) return
+                text += chunk
+                upsertSegment({ key, from, text, final: markedFinal })
+              }
+              // A reply's stream closing means the sentence is done; patient words are only
+              // final when the stream says so.
+              if (isCurrent())
+                upsertSegment({ key, from, text, final: markedFinal || from === 'agent' })
+            } catch (err) {
+              console.warn('[voice] transcript stream ended early', err)
+            }
+          })()
+        })
         roomRef.current = room
 
         let agentHasReplied = false
@@ -248,6 +303,8 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
     error,
     clearError: useCallback(() => setError(null), []),
     available: enabled && !notConfigured,
+    /** This session's transcript; kept after hang-up until the next session starts. */
+    transcript,
     start,
     stop,
   }

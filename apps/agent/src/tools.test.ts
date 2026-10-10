@@ -7,7 +7,6 @@ import {
   type Classifier,
   type ClassifyInput,
   EmergencyNotes,
-  joinReadBacks,
 } from './tools'
 
 const API = { appUrl: 'http://bell.test', agentSharedSecret: 'test-secret' }
@@ -132,14 +131,14 @@ describe('sendRequest', () => {
     await flush()
     expect(announced).toEqual([
       {
-        say: `An extra blanket. ${patientMessage('sent', 'en')}`,
+        say: patientMessage('sent', 'en'),
         note: expect.stringContaining('Sent: "An extra blanket." (request req-1)'),
       },
     ])
     expect(tools.sentRequestIds).toEqual(['req-1'])
   })
 
-  it('announces two requests that land together once, as one sentence', async () => {
+  it('confirms two requests that land together once, without reading them back', async () => {
     const tools = makeTools(
       vi
         .fn<Classifier>()
@@ -155,10 +154,35 @@ describe('sendRequest', () => {
 
     expect(api.routes()).toEqual(['POST /api/requests', 'POST /api/requests'])
     expect(announced).toHaveLength(1)
-    expect(announced[0]?.say).toBe(
-      `An extra pillow and some water. ${patientMessage('sent', 'en')}`,
-    )
+    expect(announced[0]?.say).toBe(patientMessage('sent_two', 'en'))
+    expect(announced[0]?.say).not.toMatch(/pillow|water/i)
+    expect(announced[0]?.note).toContain('"An extra pillow."')
     expect(tools.sentRequestIds).toEqual(['req-1', 'req-2'])
+  })
+
+  it('says "all sent" for three or more requests at once', async () => {
+    const tools = makeTools()
+    await Promise.all([
+      tools.sendRequest(BLANKET),
+      tools.sendRequest(BLANKET),
+      tools.sendRequest(BLANKET),
+    ])
+    await flush()
+    expect(announced).toHaveLength(1)
+    expect(announced[0]?.say).toBe(patientMessage('sent_many', 'en'))
+  })
+
+  it('only says the nurse is coming when a nurse-now result is among them', async () => {
+    const tools = makeTools(
+      vi
+        .fn<Classifier>()
+        .mockResolvedValueOnce(routine())
+        .mockResolvedValueOnce(routine({ team: 'nurse', clinical: true, reason: 'clinical' })),
+    )
+    await Promise.all([tools.sendRequest(BLANKET), tools.sendRequest(BLANKET)])
+    await flush()
+    expect(announced).toHaveLength(1)
+    expect(announced[0]?.say).toBe(patientMessage('nurse_notified', 'en'))
   })
 
   it('tells the patient the nurse was alerted for a nurse-now decision, never naming a team', async () => {
@@ -403,22 +427,5 @@ describe('EmergencyNotes', () => {
 
     api.failures.clear()
     expect(await emergency.add('me caí', 'es')).toBe(patientMessage('emergency_noted', 'es'))
-  })
-})
-
-describe('joinReadBacks', () => {
-  it('joins in the patient language', () => {
-    expect(joinReadBacks(['An extra pillow.', 'Some water.'], 'en')).toBe(
-      'An extra pillow and some water.',
-    )
-    expect(joinReadBacks(['Una almohada.', 'Agua.'], 'es')).toBe('Una almohada y agua.')
-    expect(joinReadBacks(['Ein Kissen.', 'Wasser.'], 'de')).toBe('Ein Kissen und Wasser.')
-    expect(joinReadBacks(['A pillow.', 'The TV remote.', 'Water.'], 'en')).toBe(
-      'A pillow, the TV remote, and water.',
-    )
-  })
-
-  it('leaves a single read-back as it is', () => {
-    expect(joinReadBacks(['An extra blanket.'], 'en')).toBe('An extra blanket.')
   })
 })

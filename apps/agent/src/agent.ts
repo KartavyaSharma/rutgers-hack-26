@@ -6,7 +6,7 @@
 //   - Every transcript first goes through a deterministic red-flag check. A hit notifies the
 //     nurse immediately and the LLM never handles that turn.
 //   - It opens with a short intro ("Go ahead, I'm listening.") that the patient can talk over.
-//   - The LLM says a short phrase in the same reply as a tool call ("Got it, sending that.").
+//   - The LLM says a bare acknowledgement in the same reply as a tool call ("Got it.").
 //     If a reply has no spoken text, the agent says the fixed "one moment" phrase itself, once.
 //   - Tools return nothing at once and do their work in the background, so the conversation
 //     keeps going and there is no second LLM round; the agent announces results itself.
@@ -262,7 +262,7 @@ function buildTools(bell: BellTools) {
     send_request: llm.tool({
       description:
         'Send one patient request to the hospital staff right away (no confirm step). Call once per ' +
-        'need. Say a short casual phrase like "Got it, sending that." in the same reply. The call bell ' +
+        'need. Say only a bare acknowledgement like "Got it." in the same reply, never what they asked for. The call bell ' +
         'tells the patient when it is sent.',
       parameters: z.object({
         request: z.string().describe("The patient's own words for this one need."),
@@ -287,7 +287,7 @@ function buildTools(bell: BellTools) {
       description:
         'Cancel a request this conversation sent: the most recent one by default. For a correction, ' +
         'call this first, then send_request with the corrected request. Say a short phrase like ' +
-        '"Okay, cancelling." in the same reply.',
+        '"Okay." in the same reply.',
       parameters: z.object({
         which: z
           .string()
@@ -513,6 +513,8 @@ function fixedPhrases(language: string, mode: 'request' | 'emergency'): string[]
       'listening_intro',
       'one_moment',
       'sent',
+      'sent_two',
+      'sent_many',
       'cancelled',
       'nurse_notified',
       'save_failed',

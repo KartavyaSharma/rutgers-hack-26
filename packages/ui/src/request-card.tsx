@@ -13,7 +13,7 @@ export interface RequestCardProps extends Omit<ComponentProps<'button'>, 'childr
   onPress: () => void
 }
 
-/** One open request on the home screen: icon, label, step word, and a pencil to change it. */
+/** One open request on the home screen: icon, label, step word, and a pencil that opens My requests. */
 export function RequestCard({
   label,
   icon = 'mic',
@@ -47,7 +47,7 @@ export function RequestCard({
       </span>
       <span className="flex shrink-0 text-action-ink">
         <Icon name="pencil" className="size-7" strokeWidth={2.2} />
-        <span className="sr-only">Change or follow</span>
+        <span className="sr-only">See details</span>
       </span>
     </button>
   )

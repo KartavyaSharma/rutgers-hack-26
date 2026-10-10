@@ -8,6 +8,18 @@ export {
 } from './button'
 export { cn, focusRing, pressable } from './cn'
 export {
+  ActionChip,
+  Conversation,
+  type ConversationAction,
+  type ConversationItem,
+  ConversationPanel,
+  type ConversationPanelProps,
+  type ConversationProps,
+  type VoiceStatus,
+  VoiceStatusBar,
+  type VoiceStatusBarProps,
+} from './conversation'
+export {
   EmergencyScreen,
   type EmergencyScreenProps,
   type EmergencyVoiceState,
@@ -52,6 +64,7 @@ export {
   ToggleTile,
   type ToggleTileProps,
 } from './room-controls'
+export { SentDialog, type SentDialogProps, type SentItem } from './sent-dialog'
 export {
   STEP_LABELS,
   STEPS,

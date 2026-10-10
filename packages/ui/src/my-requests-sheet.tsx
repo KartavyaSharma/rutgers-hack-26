@@ -25,11 +25,8 @@ export interface MyRequestsSheetProps {
   onOpenChange: (open: boolean) => void
   openItems: readonly MyRequestItem[]
   earlierItems: readonly MyRequestItem[]
+  /** "Still waiting?": remind the team. */
   onNudge: (id: string) => void
-  /** Change: cancel this one and start talking again. */
-  onChange: (id: string) => void
-  /** False hides Change (e.g. voice is not available, so there is no way to say the new one). */
-  canChange?: boolean
   onCancel: (id: string) => void
   /** Request with an action in flight; its buttons are disabled. */
   busyId?: string | null
@@ -45,10 +42,8 @@ export function MyRequestsSheet({
   openItems,
   earlierItems,
   onNudge,
-  onChange,
   onCancel,
   busyId = null,
-  canChange = true,
   container,
 }: MyRequestsSheetProps) {
   return (
@@ -78,8 +73,11 @@ export function MyRequestsSheet({
                     {item.line} · {item.when}
                   </span>
                 </div>
+              </div>
+              <StepTrack status={item.status} />
+              <div className="flex items-center justify-end gap-3">
                 {item.nudged ? (
-                  <span className="text-body font-bold text-muted">Reminder sent</span>
+                  <span className="px-2 text-body font-bold text-muted">Reminder sent</span>
                 ) : (
                   <Button
                     variant="secondary"
@@ -90,22 +88,6 @@ export function MyRequestsSheet({
                     Still waiting?
                   </Button>
                 )}
-              </div>
-              <StepTrack status={item.status} />
-              <div className="flex justify-end gap-3">
-                {canChange ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    icon="mic"
-                    iconClassName="text-action-ink"
-                    className="border-action-ink text-action-ink"
-                    onClick={() => onChange(item.id)}
-                    disabled={busy}
-                  >
-                    Change
-                  </Button>
-                ) : null}
                 <Button
                   variant="secondary"
                   size="md"

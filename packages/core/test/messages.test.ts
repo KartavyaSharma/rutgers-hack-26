@@ -30,6 +30,8 @@ describe('patientMessage', () => {
 
   it('has the agreed English strings', () => {
     expect(patientMessage('sent', 'en')).toBe("Sent. Someone's coming.")
+    expect(patientMessage('sent_two', 'en')).toBe("Both sent. Someone's coming.")
+    expect(patientMessage('sent_many', 'en')).toBe("All sent. Someone's coming.")
     expect(patientMessage('nurse_notified', 'en')).toBe('Your nurse is on the way.')
     expect(patientMessage('ask_again', 'en')).toBe('Okay. What do you need?')
     expect(patientMessage('say_again', 'en')).toBe('Sorry, say that again?')
@@ -65,6 +67,8 @@ describe('patientMessage', () => {
     expect(patientMessage('one_moment', 'ja')).toBe('少しお待ちください。')
     expect(patientMessage('say_again', 'es')).toBe('Perdona, ¿me lo repites?')
     expect(patientMessage('say_again', 'zh')).toBe('不好意思，请再说一遍？')
+    expect(patientMessage('sent_two', 'es')).toBe('Enviados los dos. Ya viene alguien.')
+    expect(patientMessage('sent_many', 'ko')).toBe('다 보냈어요. 곧 누가 올 거예요.')
   })
 })
 

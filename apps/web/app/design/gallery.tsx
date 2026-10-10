@@ -7,8 +7,8 @@ import {
   Button,
   type ButtonSize,
   type ButtonVariant,
-  Dialog,
-  DialogClose,
+  type ConversationItem,
+  ConversationPanel,
   EmergencyScreen,
   type EmergencyVoiceState,
   HelpButton,
@@ -22,10 +22,14 @@ import {
   RequestPanel,
   type RequestPanelState,
   RoomControls,
+  SentDialog,
+  type SentItem,
   Sheet,
   STEP_LABELS,
   type StepStatus,
   StepTrack,
+  type VoiceStatus,
+  VoiceStatusBar,
 } from '@bell/ui'
 import { type ReactNode, useState } from 'react'
 import {
@@ -74,6 +78,47 @@ const SIZES: ButtonSize[] = ['md', 'lg', 'xl']
 const PANEL_STATES: RequestPanelState[] = ['idle', 'connecting', 'listening', 'unavailable']
 const STATUSES: StepStatus[] = ['sent', 'seen', 'on_the_way', 'done', 'cancelled']
 const EMERGENCY_STATES: EmergencyVoiceState[] = ['listening', 'connecting', 'idle', 'off']
+
+const SAMPLE_CONVERSATION: ConversationItem[] = [
+  {
+    kind: 'message',
+    id: 'a1',
+    from: 'agent',
+    text: 'Hi, I’m Bell. What do you need?',
+  },
+  {
+    kind: 'message',
+    id: 'p1',
+    from: 'patient',
+    text: 'Could someone clean up a spill, and can I have some water?',
+  },
+  {
+    kind: 'message',
+    id: 'a2',
+    from: 'agent',
+    text: 'Sending someone to clean up the spill, and some water. Anything else?',
+    actions: [
+      { id: 'c1', kind: 'sent', label: 'Clean up a spill', icon: 'cleaning' },
+      { id: 'c2', kind: 'sent', label: 'Some water', icon: 'water' },
+    ],
+  },
+  { kind: 'message', id: 'p2', from: 'patient', text: 'Actually, no water.' },
+  {
+    kind: 'message',
+    id: 'a3',
+    from: 'agent',
+    text: 'Okay, I cancelled the water.',
+    actions: [{ id: 'c3', kind: 'cancelled', label: 'Some water', icon: 'water' }],
+  },
+  { kind: 'message', id: 'p3', from: 'patient', text: 'My chest feels tight', live: true },
+]
+
+const SAMPLE_NURSE_ROW: ConversationItem[] = [
+  { kind: 'message', id: 'p1', from: 'patient', text: 'I need my nurse, my IV hurts.' },
+  { kind: 'actions', id: 'row', actions: [{ id: 'n1', kind: 'nurse' }] },
+]
+
+const VOICE_STATUSES: VoiceStatus[] = ['connecting', 'listening', 'thinking', 'speaking', 'ended']
 
 const SAMPLE_OPEN: MyRequestItem[] = [
   {
@@ -208,6 +253,39 @@ function ThemePanel({ theme }: { theme: (typeof THEMES)[number] }) {
         </div>
       </Block>
 
+      <Block
+        title="ConversationPanel"
+        note="While talking: the live transcript as bubbles (you on the right, Bell on the left), what Bell did as chips, and the mic status where a chat app has its message box"
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <ConversationPanel
+            items={SAMPLE_CONVERSATION}
+            status="listening"
+            onPress={() => {}}
+            className="h-[620px]"
+          />
+          <div className="flex flex-col gap-4">
+            <ConversationPanel
+              items={SAMPLE_NURSE_ROW}
+              status="thinking"
+              onPress={() => {}}
+              className="h-[300px]"
+            />
+            <ConversationPanel
+              items={[]}
+              status="connecting"
+              onPress={() => {}}
+              className="h-[300px]"
+            />
+          </div>
+        </div>
+        <div className="flex max-w-[600px] flex-col gap-3">
+          {VOICE_STATUSES.map((status) => (
+            <VoiceStatusBar key={status} status={status} onPress={() => {}} />
+          ))}
+        </div>
+      </Block>
+
       <Block title="RequestPanel" note="idle, connecting, listening, unavailable (no voice keys)">
         <div className="grid grid-cols-2 gap-4">
           {PANEL_STATES.map((state) => (
@@ -298,22 +376,59 @@ function Frame({ children }: { children: ReactNode }) {
   )
 }
 
+const SENT_STATES = {
+  'sent-one': {
+    label: 'Request sent',
+    heard: 'Can I get another pillow please',
+    items: [{ id: '1', label: 'Another pillow', icon: 'comfort' }],
+  },
+  'sent-nurse': {
+    label: 'Your nurse has been told',
+    items: [{ id: '1', label: '“My chest hurts”', icon: 'question', nurse: true }],
+  },
+  'sent-two': {
+    label: 'Both sent',
+    heard: 'Can someone clean up a spill, and could I have some water',
+    items: [
+      { id: '1', label: 'Clean up a spill', icon: 'cleaning' },
+      { id: '2', label: 'Some water', icon: 'water' },
+    ],
+  },
+  'sent-three': {
+    label: 'All sent',
+    items: [
+      { id: '1', label: 'Clean up a spill', icon: 'cleaning' },
+      { id: '2', label: 'Some water', icon: 'water' },
+      { id: '3', label: 'Help sitting up', icon: 'move' },
+    ],
+  },
+  'sent-two-nurse': {
+    label: 'Both sent, one to the nurse',
+    items: [
+      { id: '1', label: 'Some water', icon: 'water' },
+      { id: '2', label: '“My chest hurts”', icon: 'question', nurse: true },
+    ],
+  },
+} as const satisfies Record<string, { label: string; heard?: string; items: readonly SentItem[] }>
+
+type SentState = keyof typeof SENT_STATES
+
 function OverlayDemos({ container }: { container: HTMLElement | null }) {
   const [open, setOpen] = useState<
-    'sent' | 'nurse' | 'language' | 'room' | 'requests' | 'requests-empty' | null
+    SentState | 'language' | 'room' | 'requests' | 'requests-empty' | null
   >(null)
   const [language, setLanguage] = useState('en')
   const close = (isOpen: boolean) => {
     if (!isOpen) setOpen(null)
   }
+  const sent = open && open in SENT_STATES ? SENT_STATES[open as SentState] : null
   return (
     <div className="flex flex-wrap gap-3">
-      <Button variant="secondary" onClick={() => setOpen('sent')}>
-        Request sent
-      </Button>
-      <Button variant="secondary" onClick={() => setOpen('nurse')}>
-        Your nurse has been told
-      </Button>
+      {(Object.keys(SENT_STATES) as SentState[]).map((key) => (
+        <Button key={key} variant="secondary" onClick={() => setOpen(key)}>
+          {SENT_STATES[key].label}
+        </Button>
+      ))}
       <Button variant="secondary" onClick={() => setOpen('language')}>
         Language sheet
       </Button>
@@ -327,39 +442,13 @@ function OverlayDemos({ container }: { container: HTMLElement | null }) {
         My requests, empty
       </Button>
 
-      <Dialog
-        open={open === 'sent'}
+      <SentDialog
+        open={sent !== null}
         onOpenChange={close}
         container={container}
-        eyebrow="You said “Can I get another pillow please”"
-        title="Another pillow"
-        status="Request sent"
-        body="Someone will be with you soon. You don't need to ask again."
-        actions={
-          <>
-            <DialogClose asChild>
-              <Button size="lg">Okay</Button>
-            </DialogClose>
-            <Button variant="secondary" size="lg" onClick={() => setOpen('requests')}>
-              Follow it
-            </Button>
-          </>
-        }
-      />
-      <Dialog
-        open={open === 'nurse'}
-        onOpenChange={close}
-        container={container}
-        tone="nurse"
-        title="Your nurse has been told"
-        body="They can see your call now. If you feel worse, press the red button on your bed rail."
-        actions={
-          <DialogClose asChild>
-            <Button variant="nurse" size="lg">
-              Okay
-            </Button>
-          </DialogClose>
-        }
+        items={sent?.items ?? []}
+        {...(sent && 'heard' in sent ? { heard: sent.heard } : {})}
+        onFollow={() => setOpen('requests')}
       />
       <Sheet open={open === 'language'} onOpenChange={close} container={container} title="Language">
         <LanguageOptions
@@ -379,7 +468,6 @@ function OverlayDemos({ container }: { container: HTMLElement | null }) {
         openItems={open === 'requests' ? SAMPLE_OPEN : []}
         earlierItems={open === 'requests' ? SAMPLE_EARLIER : []}
         onNudge={() => {}}
-        onChange={() => {}}
         onCancel={() => {}}
       />
     </div>

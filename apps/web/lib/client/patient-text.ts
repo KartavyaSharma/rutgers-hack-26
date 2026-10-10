@@ -16,19 +16,23 @@ export const wentStraightToNurse = (request: CallRequest): boolean =>
   request.team === 'nurse' &&
   (request.clinical || (request.routeReason !== null && IMMEDIATE_BY_REASON[request.routeReason]))
 
+/** Any call for the nurse: a nurse-now result, or the voice helper's call_my_nurse (nurse_call). */
+export const isNurseCall = (request: CallRequest): boolean =>
+  wentStraightToNurse(request) || (request.team === 'nurse' && request.category === 'nurse_call')
+
 const withoutFinalPeriod = (text: string) => text.replace(/[.。]\s*$/u, '')
 
 /**
  * What the patient asked for: the read-back for spoken requests ("An extra blanket"), the
- * option, or "Help". When it went straight to the nurse the read-back is "I've let your nurse
- * know.", so the patient's own words are the label instead.
+ * option, or "Help". For a nurse call the read-back is "I've let your nurse know.", so the
+ * patient's own words are the label instead.
  */
 export const patientLabel = (request: CallRequest): string => {
   if (request.source === 'nurse_button') return 'Help'
   if (request.optionId) return optionById(request.optionId).label
   const words = request.text?.trim()
   const readBack = request.patientReply?.trim()
-  if (wentStraightToNurse(request) && words) return `“${words}”`
+  if (isNurseCall(request) && words) return `“${words}”`
   return withoutFinalPeriod(readBack || words || 'Your request')
 }
 

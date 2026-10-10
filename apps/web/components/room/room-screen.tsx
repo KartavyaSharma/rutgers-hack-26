@@ -11,6 +11,7 @@ import {
 import {
   AppHeader,
   Button,
+  ConversationPanel,
   Dialog,
   DialogClose,
   EmergencyScreen,
@@ -24,14 +25,16 @@ import {
   RequestPanel,
   type RequestPanelState,
   RoomControls,
+  SentDialog,
   Sheet,
 } from '@bell/ui'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { callForHelp, requestAction } from '@/lib/client/api'
 import {
   AUTO_OPTION,
   CHOOSE_LANGUAGE_SUBTITLE,
   continueLabel,
+  isNurseCall,
   LANGUAGE_GRID_OPTIONS,
   LANGUAGE_OPTIONS,
   languageDir,
@@ -40,10 +43,10 @@ import {
   requestIcon,
   statusLine,
   timeAgo,
-  wentStraightToNurse,
 } from '@/lib/client/patient-text'
 import { isFirstRun, loadRoomSettings, saveRoomLanguage } from '@/lib/client/room-settings'
 import { useLiveFeed } from '@/lib/client/use-live-feed'
+import { useConversation } from './use-conversation'
 import { useRoomControls } from './use-room-controls'
 import { useVoiceSession } from './use-voice-session'
 
@@ -53,10 +56,12 @@ const TICK_MS = 30_000
 
 type SheetName = 'language' | 'room' | 'requests'
 
+/** Requests from one spoken sentence arrive within this window ("a spill and some water"). */
+const GROUP_WINDOW_MS = 2_500
+
 type DialogState =
-  | { kind: 'sent'; request: CallRequest }
-  | { kind: 'nurse' }
-  | { kind: 'error'; title: string; body?: string }
+  /** What spoken requests turned into (one sentence can become several requests). */
+  { kind: 'voice'; requests: CallRequest[] } | { kind: 'error'; title: string; body?: string }
 
 const newestFirst = (a: CallRequest, b: CallRequest) =>
   Date.parse(b.createdAt) - Date.parse(a.createdAt)
@@ -105,13 +110,38 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
 
   const voice = useVoiceSession({ roomId, language, enabled: voiceEnabled })
   const room = useRoomControls(roomId)
+  const conversation = useConversation({
+    mode: voice.mode,
+    state: voice.state,
+    transcript: voice.transcript,
+  })
 
-  // A spoken request was classified and sent: say where it stands.
+  // A spoken request was classified and sent: say where it stands. One sentence can become
+  // several requests a few hundred ms apart. A new one joins the current batch while its
+  // dialog is open, or when it arrives within GROUP_WINDOW_MS of the last one.
+  const batch = useRef<{ requests: CallRequest[]; lastAt: number; open: boolean }>({
+    requests: [],
+    lastAt: 0,
+    open: false,
+  })
+  useEffect(() => {
+    batch.current.open = dialog?.kind === 'voice'
+  }, [dialog])
   const onEvent = (event: StreamEvent) => {
+    conversation.record(event)
     const request = event.request
     if (event.type !== 'request.created' || request.source !== 'voice') return
+    const arrivedAt = Date.now()
+    const current = batch.current
+    const joins = current.open || arrivedAt - current.lastAt <= GROUP_WINDOW_MS
+    const requests = !joins
+      ? [request]
+      : current.requests.some((r) => r.id === request.id)
+        ? current.requests
+        : [...current.requests, request]
+    batch.current = { requests, lastAt: arrivedAt, open: true }
     setSheet(null)
-    setDialog(wentStraightToNurse(request) ? { kind: 'nurse' } : { kind: 'sent', request })
+    setDialog({ kind: 'voice', requests })
   }
   const { requests, upsertRequest } = useLiveFeed({
     room: roomId,
@@ -217,13 +247,6 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     }
   }
 
-  // Change: cancel it, then start talking to say what is needed instead.
-  const changeRequest = async (id: string) => {
-    if (!(await act(id, 'cancel'))) return
-    setSheet(null)
-    if (voice.mode !== 'request') void voice.start({ mode: 'request' })
-  }
-
   const chooseLanguage = (value: string) => {
     if (!isLanguagePreference(value)) return
     setLanguage(value)
@@ -236,6 +259,11 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     saveRoomLanguage(roomId, pickerValue)
     setFirstRun(false)
   }
+
+  // The patient's words, shown once when everything came from the same sentence.
+  const voiceBatch = dialog?.kind === 'voice' ? dialog.requests : []
+  const spoken = [...new Set(voiceBatch.map((r) => r.text?.trim()).filter(Boolean))]
+  const heard = spoken.length === 1 ? spoken[0] : undefined
 
   const controls = room.controls
   const roomStatus = controls ? `${controls.temperatureF}° · Lights ${controls.lights}%` : undefined
@@ -255,7 +283,16 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
       />
 
       <main className="flex min-h-0 flex-1 gap-[18px]">
-        <RequestPanel className="flex-1" state={panelState} onPress={pressPanel} />
+        {conversation.shown ? (
+          <ConversationPanel
+            className="flex-1"
+            items={conversation.items}
+            status={conversation.status}
+            onPress={pressPanel}
+          />
+        ) : (
+          <RequestPanel className="flex-1" state={panelState} onPress={pressPanel} />
+        )}
 
         <div className="flex w-column shrink-0 flex-col gap-4">
           <HelpButton
@@ -353,55 +390,24 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
         openItems={open.map((r) => toItem(r, now))}
         earlierItems={earlier.map((r) => toItem(r, now))}
         onNudge={(id) => void act(id, 'nudge')}
-        onChange={(id) => void changeRequest(id)}
         onCancel={(id) => void act(id, 'cancel')}
-        canChange={voice.available}
         busyId={busyId}
       />
 
-      <Dialog
-        open={dialog?.kind === 'sent'}
+      <SentDialog
+        open={dialog?.kind === 'voice'}
         onOpenChange={(isOpen) => !isOpen && setDialog(null)}
-        {...(dialog?.kind === 'sent' && dialog.request.text
-          ? { eyebrow: `You said “${dialog.request.text}”` }
-          : {})}
-        title={dialog?.kind === 'sent' ? patientLabel(dialog.request) : ''}
-        status="Request sent"
-        body="Someone will be with you soon. You don't need to ask again."
-        actions={
-          <>
-            <DialogClose asChild>
-              <Button variant="primary" size="lg">
-                Okay
-              </Button>
-            </DialogClose>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => {
-                setDialog(null)
-                setSheet('requests')
-              }}
-            >
-              Follow it
-            </Button>
-          </>
-        }
-      />
-
-      <Dialog
-        open={dialog?.kind === 'nurse'}
-        onOpenChange={(isOpen) => !isOpen && setDialog(null)}
-        tone="nurse"
-        title="Your nurse has been told"
-        body="They can see your call now. If you feel worse, press the red button on your bed rail."
-        actions={
-          <DialogClose asChild>
-            <Button variant="nurse" size="lg">
-              Okay
-            </Button>
-          </DialogClose>
-        }
+        items={voiceBatch.map((r) => ({
+          id: r.id,
+          label: patientLabel(r),
+          icon: requestIcon(r),
+          nurse: isNurseCall(r),
+        }))}
+        {...(heard ? { heard } : {})}
+        onFollow={() => {
+          setDialog(null)
+          setSheet('requests')
+        }}
       />
 
       <Dialog
