@@ -9,6 +9,9 @@ next-env.d.ts
 # local database (PGlite fallback when DATABASE_URL is unset)
 .data/
 
+# local dev logs (the voice agent tees its output here)
+.logs/
+
 # env files: only the example is committed
 .env
 .env.*

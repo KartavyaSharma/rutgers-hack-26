@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/main.ts dev",
+    "dev": "mkdir -p ../../.logs && tsx src/main.ts dev 2>&1 | tee -a ../../.logs/agent.log",
     "start": "tsx src/main.ts start",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
