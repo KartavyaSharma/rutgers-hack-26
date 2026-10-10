@@ -1,5 +1,6 @@
 'use client'
 
+import { isLanguagePreference } from '@bell/core/taxonomy'
 import {
   AppHeader,
   type BlindsPosition,
@@ -27,7 +28,14 @@ import {
   StepTrack,
 } from '@bell/ui'
 import { type ReactNode, useState } from 'react'
-import { LANGUAGE_OPTIONS } from '@/lib/client/patient-text'
+import {
+  AUTO_OPTION,
+  CHOOSE_LANGUAGE_SUBTITLE,
+  continueLabel,
+  LANGUAGE_GRID_OPTIONS,
+  LANGUAGE_OPTIONS,
+  languageDir,
+} from '@/lib/client/patient-text'
 
 const THEMES = [
   { id: 'clay', name: 'Clay', note: 'The tablet theme' },
@@ -407,14 +415,17 @@ function LanguageDemo() {
 
 function PickerDemo() {
   const [value, setValue] = useState('es')
+  const language = isLanguagePreference(value) ? value : 'auto'
   return (
     <LanguagePicker
-      options={LANGUAGE_OPTIONS}
+      options={LANGUAGE_GRID_OPTIONS}
+      autoOption={AUTO_OPTION}
       value={value}
       onChange={setValue}
       onContinue={() => {}}
-      continueLabel={value === 'es' ? 'Continuar' : 'Continue'}
-      subtitle="Elija su idioma · Choisissez votre langue · अपनी भाषा चुनें · 言語を選んでください"
+      continueLabel={continueLabel(language)}
+      continueDir={languageDir(language)}
+      subtitle={CHOOSE_LANGUAGE_SUBTITLE}
     />
   )
 }

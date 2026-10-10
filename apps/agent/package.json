@@ -11,12 +11,14 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "4.0.110",
     "@bell/core": "workspace:*",
     "@livekit/agents": "1.9.2",
     "@livekit/agents-plugin-cerebras": "1.9.2",
     "@livekit/agents-plugin-deepgram": "1.9.2",
     "@livekit/agents-plugin-elevenlabs": "1.9.2",
     "@livekit/rtc-node": "1.1.0",
+    "ai": "7.0.137",
     "tsx": "4.23.15",
     "zod": "^4.1.8"
   },

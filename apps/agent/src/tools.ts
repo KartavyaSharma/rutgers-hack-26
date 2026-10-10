@@ -9,6 +9,7 @@
 import {
   classifyRequest as coreClassifyRequest,
   detectRedFlag,
+  isLanguagePreference,
   type LanguagePreference,
   needsNurseNow,
   patientMessage,
@@ -137,6 +138,17 @@ export class BellTools {
     if (language) this.#heardLanguage = language
   }
 
+  /** For the classifier: the room setting, else the language the STT heard, else auto-detect. */
+  get classifyLanguage(): LanguagePreference {
+    if (this.#roomLanguage !== 'auto') return this.#roomLanguage
+    return isLanguagePreference(this.#heardLanguage) ? this.#heardLanguage : 'auto'
+  }
+
+  /** Language the STT heard last, if any. */
+  get heardLanguage(): string | undefined {
+    return this.#heardLanguage
+  }
+
   /** Room setting first, then what the STT heard, then English. */
   get messageLanguage(): string {
     return this.#roomLanguage !== 'auto' ? this.#roomLanguage : (this.#heardLanguage ?? 'en')
@@ -190,7 +202,7 @@ export class BellTools {
     try {
       decision = await this.#classify({
         text: input.request,
-        language: this.#roomLanguage,
+        language: this.classifyLanguage,
         staffSummary: input.staffSummary,
         readBack: input.readBack,
       })

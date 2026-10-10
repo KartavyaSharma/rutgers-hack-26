@@ -524,16 +524,27 @@ describe('room language setting', () => {
     })
   })
 
-  it('German setting localizes timeouts too', async () => {
+  it('Polish setting localizes timeouts too', async () => {
     const { layer } = mockModel(() => Effect.never)
     const result = await makeRouteText(layer, { timeoutMs: 20 })('can I get another blanket', {
-      language: 'de',
+      language: 'pl',
     })
     expect(result).toMatchObject({
       reason: 'timeout',
-      language: 'de',
-      patientReply: 'Ich habe Ihrer Pflegekraft Bescheid gegeben.',
+      language: 'pl',
+      patientReply: 'Twoja pielęgniarka została powiadomiona.',
     })
+  })
+
+  it.each([
+    ['tl', 'Naabisuhan ko na ang iyong nars.'],
+    ['ht', 'Mwen avèti enfimyè ou a.'],
+    ['ar', 'لقد أبلغت ممرضتك.'],
+    ['ko', '담당 간호사에게 알렸습니다.'],
+    ['vi', 'Tôi đã báo cho y tá của bạn.'],
+  ] as const)('%s setting localizes the nurse message on a red flag', async (language, reply) => {
+    const result = await routeText('I have chest pain', { language })
+    expect(result).toMatchObject({ reason: 'red_flag', language, patientReply: reply })
   })
 
   it('"auto" keeps detection', async () => {
@@ -556,17 +567,17 @@ describe('room language setting', () => {
   it('tells the model which language to read back in and forces the language code', async () => {
     const { layer, calls } = scriptedModel({
       'can I get another blanket': decision({
-        patientReply: 'Une couverture de plus.',
+        patientReply: '담요 하나 더.',
         language: 'en',
       }),
     })
-    const result = await makeRouteText(layer)('can I get another blanket', { language: 'fr' })
-    expect(calls[0]?.system).toContain('room language is set to French')
-    expect(calls[0]?.system).toContain('set language to "fr"')
+    const result = await makeRouteText(layer)('can I get another blanket', { language: 'ko' })
+    expect(calls[0]?.system).toContain('room language is set to Korean')
+    expect(calls[0]?.system).toContain('set language to "ko"')
     expect(result).toMatchObject({
       team: 'care_aide',
-      language: 'fr',
-      patientReply: 'Une couverture de plus.',
+      language: 'ko',
+      patientReply: '담요 하나 더.',
       reason: 'model',
     })
   })

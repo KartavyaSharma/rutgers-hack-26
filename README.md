@@ -43,7 +43,9 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 | Variable | Used by | Notes |
 | --- | --- | --- |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | web, agent | voice sessions; the token endpoint returns 503 without them |
-| `DEEPGRAM_API_KEY` | agent | speech to text, Deepgram Flux `flux-general-multi` |
+| `AI_GATEWAY_API_KEY` | agent | speech to text: MAI-Transcribe-2 via the Vercel AI Gateway (auto language detection); the default when set |
+| `STT_PROVIDER` | agent | `mai` (default with the gateway key) or `deepgram` |
+| `DEEPGRAM_API_KEY` | agent | fallback speech to text, Deepgram Flux `flux-general-multi` (10 languages) |
 | `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | text to speech |
 | `ELEVEN_MODEL` | agent | `eleven_v4_turbo` (default, low latency) or `eleven_v4` (higher quality) |
 | `TYPESAFE_API_KEY` | web, agent | Jev classifier (team, clinical, urgency); optional `TYPESAFE_MODEL` (default `jev-latest`) |
@@ -56,7 +58,7 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 
 ```
 apps/web        Next.js 16 (App Router, Tailwind 4): tablet, staff dev view, API, SSE, Postgres/PGlite via Drizzle
-apps/agent      LiveKit Agents (Node): Deepgram Flux STT -> Qwen 3.8 conversation + tools -> Jev -> web API -> ElevenLabs TTS
+apps/agent      LiveKit Agents (Node): MAI-Transcribe STT -> Qwen 3.8 conversation + tools -> Jev -> web API -> ElevenLabs TTS
 packages/core   classifier (Effect 4: Jev, plus the backup Qwen router), shared taxonomy/types, localized patient messages, adapter seams
 packages/ui     design tokens (tokens.css from the design system) and base components
 ```
@@ -75,10 +77,14 @@ packages/ui     design tokens (tokens.css from the design system) and base compo
   bleeding, ... in the 10 room languages) before any AI call; Jev saying clinical; team confidence under 0.8;
   timeout over 2 s, errors, bad output or rate limits. Every path ends on the nurse, and it never rejects. Jev also
   tags each request with its group (water_food, comfort, cleaning, ...) for the tablet's icons.
-- **Language is a room setting**: Auto (detected) or one of the 10 Flux languages. It flows to the speech-to-text
-  hint, the replies and the text-to-speech language. The theme is Clay (Night is kept in the tokens for later).
+- **Language**: Auto by default: MAI-Transcribe detects what the patient speaks and the agent replies in it. The
+  tablet also offers the 12 languages of the chosen language screen as a room setting (a hint for speech-to-text,
+  the replies and text-to-speech). Haitian Creole is not supported by the speech models yet. The theme is Clay (Night is kept in the tokens for later).
 - **Voice agent**: tap to talk. The tablet gets a LiveKit token from `POST /api/livekit/token`, which dispatches the
-  agent with `{ roomId, language, mode, emergencyRequestId }`. Flux's end of turn closes each turn. Red-flag phrases
+  agent with `{ roomId, language, mode, emergencyRequestId }`. Speech-to-text is MAI-Transcribe-2 through the Vercel
+  AI Gateway: a local VAD cuts each utterance (600 ms of silence), the streaming model gives live partials and the
+  batch model gives the final text and its language (about 1.1–1.5 s from the end of speech to the end of the turn).
+  Deepgram Flux remains as a fallback (`STT_PROVIDER=deepgram`). Red-flag phrases
   are caught in code before the LLM and go straight to the nurse. Otherwise Qwen 3.8 (reasoning high) keeps it
   terse and conversational, and says a short phrase whenever it calls a tool: `send_request` (Jev classifies in the
   background, then the request is sent), `cancel_request` (corrections, "never mind"), `call_my_nurse`.

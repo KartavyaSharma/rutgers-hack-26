@@ -11,6 +11,8 @@ export interface LanguageOption {
   sublabel?: string
   /** BCP-47 code for the label's text, so screen readers pronounce it right. */
   lang?: string
+  /** Text direction of the label: "rtl" for Arabic. */
+  dir?: 'ltr' | 'rtl'
 }
 
 export interface LanguageOptionsProps {
@@ -64,7 +66,11 @@ export function LanguageOptions({
             )}
           >
             <span className="flex flex-col gap-0.5">
-              <span lang={option.lang} className="text-title leading-tight font-bold">
+              <span
+                lang={option.lang}
+                dir={option.dir}
+                className="text-title leading-tight font-bold"
+              >
                 {option.label}
               </span>
               {option.sublabel ? (
@@ -85,12 +91,18 @@ export function LanguageOptions({
 }
 
 export interface LanguagePickerProps {
+  /** The languages, shown as a 3 × 4 grid (the board's 12). */
   options: readonly LanguageOption[]
+  /** Optional "Auto (detect)" choice, shown beside Continue (value e.g. "auto"). */
+  autoOption?: LanguageOption
   value: string
   onChange: (value: string) => void
   onContinue: () => void
   /** Continue, in the chosen language. */
   continueLabel?: string
+  /** Language and direction of the Continue label (e.g. "ar" and "rtl"). */
+  continueLang?: string
+  continueDir?: 'ltr' | 'rtl'
   title?: string
   /** "Choose your language" in a few other languages. */
   subtitle?: string
@@ -100,10 +112,13 @@ export interface LanguagePickerProps {
 /** Full-screen first-run language choice. */
 export function LanguagePicker({
   options,
+  autoOption,
   value,
   onChange,
   onContinue,
   continueLabel = 'Continue',
+  continueLang,
+  continueDir,
   title = 'Choose your language',
   subtitle,
   className,
@@ -136,9 +151,37 @@ export function LanguagePicker({
         fill
         className="min-h-0 flex-1"
       />
-      <Button variant="primary" size="xl" onClick={onContinue} className="w-full">
-        {continueLabel}
-      </Button>
+      <div className="flex gap-3.5">
+        {autoOption ? (
+          <button
+            type="button"
+            aria-pressed={value === autoOption.value}
+            onClick={() => onChange(autoOption.value)}
+            className={cn(
+              'flex min-h-tap-xl flex-1 items-center justify-center gap-3 rounded-pill border-2 px-6 font-body text-lead font-bold text-ink',
+              value === autoOption.value
+                ? 'border-action-ink bg-action-tint'
+                : 'border-border bg-surface',
+              pressable,
+              focusRing,
+            )}
+          >
+            <Icon
+              name={value === autoOption.value ? 'check' : 'globe'}
+              className="size-7 text-action-ink"
+            />
+            {autoOption.label}
+            {autoOption.sublabel ? (
+              <span className="font-normal text-muted">· {autoOption.sublabel}</span>
+            ) : null}
+          </button>
+        ) : null}
+        <Button variant="primary" size="xl" onClick={onContinue} className="flex-1">
+          <span lang={continueLang} dir={continueDir}>
+            {continueLabel}
+          </span>
+        </Button>
+      </div>
     </section>
   )
 }

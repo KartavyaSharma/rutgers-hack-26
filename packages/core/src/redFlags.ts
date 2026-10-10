@@ -377,6 +377,142 @@ const WORD_PATTERNS: ReadonlyArray<readonly [SupportedLanguage, PatternTable]> =
       emergency: ['(?<!geen )noodgeval'],
     },
   ],
+  [
+    'tl',
+    {
+      unresponsive: ['nawalan (siya )?ng malay', 'walang malay', '(hinimatay|nahimatay)'],
+      breathing: [
+        'hindi (ako |siya )?makahinga',
+        '(hirap|nahihirapan|nahihirapang) (akong |siyang )?huminga',
+        'kinakapos (ako )?(ng|sa) hininga',
+      ],
+      choking: ['nabubulunan', 'nabulunan', 'nabilaukan'],
+      chest_pain: [
+        '(masakit|sumasakit) ang (aking )?dibdib',
+        'sakit (sa|ng) dibdib',
+        'atake sa puso',
+      ],
+      stroke_signs: [
+        'stroke',
+        'hindi ko maigalaw ang (aking )?(braso|binti|kamay|mukha)',
+        'tabingi ang (mukha|bibig)',
+      ],
+      bleeding: ['dumudugo', 'nagdurugo', 'maraming dugo'],
+      self_harm: [
+        'gusto ko nang mamatay',
+        'magpapakamatay',
+        'magpakamatay',
+        'patayin ang sarili ko',
+      ],
+      // "nahulog ako" (I fell); "nahulog ang telepono ko" (my phone fell) does not match.
+      fall: ['(nahulog|natumba|nadulas|bumagsak) ako'],
+      severe_pain: ['sobrang sakit', 'napakasakit', 'hindi ko na kaya ang sakit'],
+      emergency: ['saklolo'],
+    },
+  ],
+  [
+    'ht',
+    {
+      unresponsive: ['endispoze', 'pedi konesans', 'san konesans'],
+      breathing: [
+        '(mwen|m) pa (ka|kapab) respire',
+        'mpa (ka|kapab) respire',
+        'difikilte pou respire',
+        'kout souf',
+        'souf mwen kout',
+      ],
+      choking: ['(m ap|map|mwen ap) toufe', 'toufe'],
+      chest_pain: ['doule nan pwatrin', 'pwatrin (mwen )?(ap )?fe (mwen )?mal', 'kriz kadyak'],
+      stroke_signs: [
+        'konjesyon serebral',
+        'estwok',
+        'figi mwen (tode|kwochi)',
+        '(mwen|m) pa ka bouje (bra|janm|men) mwen',
+      ],
+      bleeding: ['(m ap|map|mwen ap) senyen', 'senyen anpil', 'pedi san'],
+      self_harm: ['(mwen|m) vle mouri', 'touye tet mwen', 'swisid'],
+      // Only at the start: "telefon mwen tonbe" (my phone fell) must not match.
+      fall: ['(?<![a-z] )(mwen |m ?)(sot |fek )?tonbe'],
+      severe_pain: ['doule (a )?(twop|grav)', '(m ap|map) soufri anpil'],
+      emergency: ['anmwe', '(?<!pa yon )ijans'],
+    },
+  ],
+  [
+    'vi',
+    {
+      unresponsive: ['bat tinh', 'ngat xiu', 'bi (ngat|xiu)', 'hon me'],
+      breathing: ['khong (the )?tho( duoc)?', 'khong tho noi', 'kho tho', 'nghet tho', 'ngop tho'],
+      choking: ['bi (nghen|hoc)', 'mac nghen'],
+      chest_pain: ['dau (o )?nguc', 'tuc nguc', 'dau tim', 'nhoi mau co tim', 'len con dau tim'],
+      stroke_signs: [
+        'dot quy',
+        'tai bien',
+        'meo (mieng|mat)',
+        'khong cu dong (duoc )?(tay|chan)',
+        'liet (nua nguoi|tay|chan)',
+      ],
+      bleeding: ['chay mau', 'mat mau', 'ra (nhieu )?mau'],
+      // Not "tu tu": that is also "từ từ" (slowly).
+      self_harm: ['muon chet', 'tu sat', 'ket lieu (cuoc doi|ban than)'],
+      // People fall (ngã, té); objects drop (rơi), which is not listed.
+      fall: [
+        '(toi|em|con|me|ba|ong) (bi )?(nga|te)',
+        'nga xuong',
+        'te nga',
+        '(nga|te) khoi giuong',
+      ],
+      severe_pain: [
+        'dau qua',
+        'dau du doi',
+        'dau khung khiep',
+        'dau kinh khung',
+        'dau khong chiu noi',
+      ],
+      emergency: ['cuu (toi|voi|em|con|me)', '(?<!khong phai )cap cuu'],
+    },
+  ],
+  [
+    'pl',
+    {
+      unresponsive: ['zemdlal(em|am|a)?', 'stracil(em|am|a)? przytomnosc', 'nieprzytomn\\w*'],
+      breathing: [
+        'nie moge oddychac',
+        'nie moge zlapac (tchu|oddechu)',
+        'brak mi tchu',
+        'dusze sie',
+        'dusi mnie',
+        'dusznosc',
+      ],
+      choking: ['(zakrztusil|zadlawil)(em|am|a)? sie', '(krztusze|dlawie) sie'],
+      chest_pain: [
+        'bol w klatce( piersiowej)?',
+        'boli mnie (w )?klat(ka|ce)',
+        'zawal( serca)?',
+        'ucisk w klatce',
+      ],
+      stroke_signs: [
+        'udar',
+        'nie moge ruszyc (reka|noga|dlonia)',
+        'krzywa twarz',
+        'opadniety kacik ust',
+        'belkocze',
+      ],
+      seizure: ['atak padaczki', 'drgawki'],
+      allergic_reaction: ['reakcja alergiczna', 'puchnie mi gardlo'],
+      bleeding: ['krwawie', 'krwawienie', 'krwotok', 'duzo krwi', 'leci (mi )?krew'],
+      self_harm: ['chce umrzec', 'zabic sie', 'samobojstw\\w*', 'samobojcz\\w*'],
+      // "upadłem/upadłam" (I fell); "telefon mi upadł" (my phone fell) does not match.
+      fall: [
+        'upadl(em|am)',
+        '(on|ona) upadl(a)?',
+        'przewrocil(em|am) sie',
+        'spadl(em|am) z lozka',
+        'leze na podlodze',
+      ],
+      severe_pain: ['(silny|straszny|okropny) bol', 'nie do wytrzymania'],
+      emergency: ['ratunku', '(?<!to nie )nagly wypadek'],
+    },
+  ],
 ]
 
 // Languages written without spaces between words (or where we match inflected stems): substring match.
@@ -445,6 +581,98 @@ const SUBSTRING_PATTERNS: ReadonlyArray<readonly [SupportedLanguage, PatternTabl
       severe_pain: ['激痛', 'ひどい痛み'],
     },
   ],
+  [
+    'ar',
+    {
+      unresponsive: ['فقد الوعي', 'فقدت الوعي', 'أغمي عليه', 'أغمي علي', 'إغماء'],
+      breathing: [
+        'لا أستطيع التنفس',
+        'لا أقدر أتنفس',
+        'مش قادر أتنفس',
+        'ضيق في التنفس',
+        'صعوبة في التنفس',
+        'ضيق تنفس',
+      ],
+      choking: ['أختنق', 'اختناق', 'يختنق'],
+      chest_pain: [
+        'ألم في الصدر',
+        'ألم في صدري',
+        'ألم بالصدر',
+        'صدري يؤلمني',
+        'وجع في صدري',
+        'نوبة قلبية',
+        'ذبحة صدرية',
+        'جلطة قلبية',
+      ],
+      stroke_signs: [
+        'جلطة دماغية',
+        'سكتة دماغية',
+        'لا أستطيع تحريك يدي',
+        'لا أستطيع تحريك ذراعي',
+        'لا أستطيع تحريك رجلي',
+        'وجهي مائل',
+        'فمي مائل',
+      ],
+      bleeding: ['أنزف', 'نزيف', 'ينزف', 'تنزف', 'دم كثير'],
+      self_harm: ['أريد أن أموت', 'انتحار', 'أقتل نفسي'],
+      // Without vowel marks "سقطت" is also "it (f.) fell", so only the first person is listed.
+      fall: ['أنا سقطت', 'أنا وقعت', 'وقعت من السرير'],
+      severe_pain: ['ألم شديد', 'ألم لا يحتمل', 'وجع شديد'],
+      emergency: ['النجدة', 'الحقوني', 'إسعاف'],
+    },
+  ],
+  [
+    'ko',
+    {
+      unresponsive: ['의식이 없', '의식을 잃', '기절', '쓰러질 것 같'],
+      breathing: [
+        '숨을 못 쉬',
+        '숨을 쉴 수 없',
+        '숨쉬기 힘들',
+        '숨쉬기가 힘들',
+        '숨이 차',
+        '호흡곤란',
+      ],
+      choking: ['목에 걸렸', '숨이 막혀', '사레'],
+      chest_pain: [
+        '가슴이 아파',
+        '가슴이 아픕',
+        '가슴 통증',
+        '흉통',
+        '가슴이 답답',
+        '가슴이 조여',
+        '심장마비',
+      ],
+      stroke_signs: [
+        '뇌졸중',
+        '중풍',
+        '팔을 움직일 수 없',
+        '다리를 움직일 수 없',
+        '말이 어눌',
+        '얼굴이 마비',
+        '입이 돌아갔',
+      ],
+      bleeding: ['피가 나', '피가 많이', '출혈'],
+      self_harm: ['죽고 싶', '자살'],
+      // "넘어졌어요" is also used for chairs and IV poles, so only people are listed.
+      fall: [
+        '제가 넘어졌',
+        '내가 넘어졌',
+        '저 넘어졌',
+        '넘어져서 못 일어나',
+        '낙상',
+        '엄마가 넘어졌',
+        '어머니가 넘어졌',
+        '아버지가 넘어졌',
+        '남편이 넘어졌',
+        '아내가 넘어졌',
+        '환자가 넘어졌',
+      ],
+      severe_pain: ['너무 아파', '너무 아픕', '극심한 통증', '심한 통증'],
+      // Not "도와주세요" (please help), which is any request.
+      emergency: ['살려 주세요', '살려줘', '구급차'],
+    },
+  ],
 ]
 
 interface CompiledPattern {
@@ -468,7 +696,8 @@ const COMPILED: ReadonlyArray<CompiledPattern> = RED_FLAG_CATEGORIES.flatMap((ca
     if (phrases === undefined || phrases.length === 0) return []
     // Phrases go through the same normalization as the text (NFD etc.) before matching.
     const regex = new RegExp(
-      `(${phrases.map((p) => escapeRegex(normalizeText(p))).join('|')})`,
+      // A space in a phrase is optional, since spacing varies (Korean especially).
+      `(${phrases.map((p) => escapeRegex(normalizeText(p)).replace(/ /g, ' ?')).join('|')})`,
       'u',
     )
     return [{ category, language, regex }]
@@ -477,8 +706,8 @@ const COMPILED: ReadonlyArray<CompiledPattern> = RED_FLAG_CATEGORIES.flatMap((ca
 
 /**
  * Look for red-flag phrases (chest pain, can't breathe, fell, bleeding, choking, stroke signs,
- * unconscious, severe pain, suicidal, allergic reaction, seizure, ...) in the 10 room languages
- * (en es fr de hi ru pt ja it nl) plus Chinese. Returns null when nothing matches.
+ * unconscious, severe pain, suicidal, allergic reaction, seizure, ...) in the 12 room languages
+ * (en es zh tl ht pt ru ar hi ko vi pl) plus fr, de, ja, it, nl. Returns null when nothing matches.
  */
 export const detectRedFlag = (text: string): RedFlagMatch | null => {
   const normalized = normalizeText(text)

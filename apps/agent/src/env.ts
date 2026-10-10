@@ -15,11 +15,15 @@ const REQUIRED_KEYS = [
   'LIVEKIT_URL',
   'LIVEKIT_API_KEY',
   'LIVEKIT_API_SECRET',
-  'DEEPGRAM_API_KEY',
   'ELEVEN_API_KEY',
   'CEREBRAS_API_KEY',
   'AGENT_SHARED_SECRET',
 ] as const
+
+export const STT_PROVIDERS = ['mai', 'deepgram'] as const
+export type SttProvider = (typeof STT_PROVIDERS)[number]
+/** The key each speech-to-text provider needs. */
+const STT_KEYS = { mai: 'AI_GATEWAY_API_KEY', deepgram: 'DEEPGRAM_API_KEY' } as const
 
 export const DEFAULT_ELEVEN_MODEL = 'eleven_v4_turbo'
 export const DEFAULT_APP_URL = 'http://localhost:3000'
@@ -32,36 +36,59 @@ export const DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT: ReasoningEffort = 'high'
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   typeof value === 'string' && (REASONING_EFFORTS as readonly string[]).includes(value)
 
+const isSttProvider = (value: unknown): value is SttProvider =>
+  typeof value === 'string' && (STT_PROVIDERS as readonly string[]).includes(value)
+
 /** Trimmed value, or undefined when unset or empty (.env.example ships empty keys). */
 function read(name: string): string | undefined {
   const value = process.env[name]?.trim()
   return value ? value : undefined
 }
 
-function required(name: (typeof REQUIRED_KEYS)[number]): string {
+function required(name: string): string {
   const value = read(name)
   if (value === undefined) throw new Error(`${name} is not set`)
   return value
 }
 
+/**
+ * STT_PROVIDER ("mai" | "deepgram"). Default: MAI-Transcribe through the AI Gateway when
+ * AI_GATEWAY_API_KEY is set, else Deepgram Flux.
+ */
+export function sttProvider(): SttProvider {
+  const chosen = read('STT_PROVIDER')?.toLowerCase()
+  if (isSttProvider(chosen)) return chosen
+  return read(STT_KEYS.mai) ? 'mai' : 'deepgram'
+}
+
 /** Names of required variables that are missing. Never returns values. */
 export function missingEnv(): string[] {
-  return REQUIRED_KEYS.filter((key) => read(key) === undefined)
+  const keys = [...REQUIRED_KEYS, STT_KEYS[sttProvider()]]
+  return keys.filter((key) => read(key) === undefined)
 }
 
 /** Set-but-unusable optional variables, as one-line warnings (names and allowed values only). */
 export function envWarnings(): string[] {
+  const warnings: string[] = []
   const effort = read('CEREBRAS_AGENT_REASONING_EFFORT')
   if (effort !== undefined && !isReasoningEffort(effort)) {
-    return [
+    warnings.push(
       `CEREBRAS_AGENT_REASONING_EFFORT must be one of ${REASONING_EFFORTS.join(', ')}; using ${DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT}`,
-    ]
+    )
   }
-  return []
+  const provider = read('STT_PROVIDER')
+  if (provider !== undefined && !isSttProvider(provider.toLowerCase())) {
+    warnings.push(`STT_PROVIDER must be one of ${STT_PROVIDERS.join(', ')}; using ${sttProvider()}`)
+  }
+  return warnings
 }
 
+export type SttEnv =
+  | { provider: 'mai'; aiGatewayApiKey: string }
+  | { provider: 'deepgram'; deepgramApiKey: string }
+
 export interface AgentEnv {
-  deepgramApiKey: string
+  stt: SttEnv
   elevenApiKey: string
   /** undefined means the ElevenLabs plugin's default voice. */
   elevenVoiceId: string | undefined
@@ -77,8 +104,12 @@ export interface AgentEnv {
 /** Typed env for the job process. Throws if a required variable is missing. */
 export function agentEnv(): AgentEnv {
   const effort = read('CEREBRAS_AGENT_REASONING_EFFORT')
+  const provider = sttProvider()
   return {
-    deepgramApiKey: required('DEEPGRAM_API_KEY'),
+    stt:
+      provider === 'mai'
+        ? { provider, aiGatewayApiKey: required(STT_KEYS.mai) }
+        : { provider, deepgramApiKey: required(STT_KEYS.deepgram) },
     elevenApiKey: required('ELEVEN_API_KEY'),
     elevenVoiceId: read('ELEVEN_VOICE_ID'),
     elevenModel: read('ELEVEN_MODEL') ?? DEFAULT_ELEVEN_MODEL,

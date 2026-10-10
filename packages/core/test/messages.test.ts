@@ -64,9 +64,10 @@ describe('quotePatientWords', () => {
 })
 
 describe('HELP_BUTTON_LABELS', () => {
-  const codes = [...LANGUAGES.map((l) => l.code), 'zh'] as const
+  // The 12 room languages plus the extra reply languages auto-detect can land on.
+  const codes = [...LANGUAGES.map((l) => l.code), 'fr', 'de', 'ja', 'it', 'nl'] as const
 
-  it('has a label for every room language plus Chinese, and nothing else', () => {
+  it('has a label for every room language plus the extras, and nothing else', () => {
     expect(Object.keys(HELP_BUTTON_LABELS).sort()).toEqual([...codes].sort())
     for (const code of codes) expect(HELP_BUTTON_LABELS[code].length).toBeGreaterThan(0)
   })
@@ -92,5 +93,34 @@ describe('HELP_BUTTON_LABELS', () => {
     expect(helpButtonLabel('pt-BR')).toBe('Preciso de ajuda imediata')
     expect(helpButtonLabel('auto')).toBe('I need help immediately')
     expect(helpButtonLabel('xx')).toBe('I need help immediately')
+  })
+})
+
+describe('new room languages', () => {
+  it('has the six new languages for every key', () => {
+    for (const code of ['tl', 'ht', 'ar', 'ko', 'vi', 'pl'] as const) {
+      for (const key of PATIENT_MESSAGE_KEYS) {
+        expect(patientMessage(key, code)).not.toBe(patientMessage(key, 'en'))
+      }
+    }
+    expect(patientMessage('cancelled', 'vi')).toBe('Vâng, tôi đã hủy yêu cầu đó.')
+    expect(patientMessage('one_moment', 'ko')).toBe('잠시만요.')
+    expect(patientMessage('sent', 'pl')).toBe('Wysłano. Ktoś wkrótce do Ciebie przyjdzie.')
+  })
+
+  it('maps region and alias codes, and falls back to English', () => {
+    expect(patientMessage('sent', 'zh-CN')).toBe(patientMessage('sent', 'zh'))
+    expect(patientMessage('sent', 'zh_TW')).toBe(patientMessage('sent', 'zh'))
+    expect(patientMessage('sent', 'pt-BR')).toBe(patientMessage('sent', 'pt'))
+    expect(patientMessage('sent', 'fil')).toBe(patientMessage('sent', 'tl'))
+    expect(patientMessage('sent', 'ar-EG')).toBe(patientMessage('sent', 'ar'))
+    expect(patientMessage('sent', 'auto')).toBe(patientMessage('sent', 'en'))
+    expect(patientMessage('sent', 'sw')).toBe(patientMessage('sent', 'en'))
+  })
+
+  it('quotes in Arabic and Polish style', () => {
+    expect(quotePatientWords('أحتاج بطانية', 'ar')).toBe('«أحتاج بطانية»')
+    expect(quotePatientWords('potrzebuję koca', 'pl')).toBe('„potrzebuję koca”')
+    expect(patientMessage('save_failed', 'ar')).toContain(`«${HELP_BUTTON_LABELS.ar}»`)
   })
 })

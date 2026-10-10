@@ -13,7 +13,13 @@
 // - 'emergency': no LLM. "I'm listening", then everything the patient says is added to the
 //   emergency request's notes.
 // Patient-facing speech never names a team. Transcripts are never logged.
-import { isLanguagePreference, type LanguagePreference, patientMessage } from '@bell/core'
+import {
+  FLUX_LANGUAGES,
+  isLanguagePreference,
+  LANGUAGES,
+  type LanguagePreference,
+  patientMessage,
+} from '@bell/core'
 import {
   type ChatContext,
   type ChatMessage,
@@ -21,6 +27,7 @@ import {
   type JobContext,
   llm,
   log,
+  type stt,
   voice,
 } from '@livekit/agents'
 import * as deepgram from '@livekit/agents-plugin-deepgram'
@@ -29,6 +36,7 @@ import { z } from 'zod'
 import { type AgentEnv, agentEnv, loadRootEnv } from './env'
 import { ConversationLLM } from './llm'
 import { buildInstructions, NOTE_PREFIX } from './prompt'
+import { MaiSTT } from './stt-mai'
 import { type Announcement, BellTools, EmergencyNotes } from './tools'
 
 // The job process inherits the parent's env; loading again only matters when this file is
@@ -74,6 +82,7 @@ async function announce(session: voice.AgentSession, { say, note }: Announcement
 
 export class BellAgent extends voice.Agent {
   readonly #bell: BellTools
+  readonly #roomLanguage: LanguagePreference
   /** Whether the LLM reply being generated has spoken text (the tool phrase). */
   #replyHasText = false
   /** Whether "One moment." was already said for this reply. */
@@ -82,18 +91,21 @@ export class BellAgent extends voice.Agent {
   constructor(language: LanguagePreference, bell: BellTools) {
     super({ instructions: buildInstructions(language), tools: buildTools(bell) })
     this.#bell = bell
+    this.#roomLanguage = language
   }
 
   /** Red flags never reach the LLM; everything else gets a normal LLM reply. */
-  override async onUserTurnCompleted(
-    _chatCtx: ChatContext,
-    newMessage: ChatMessage,
-  ): Promise<void> {
+  override async onUserTurnCompleted(chatCtx: ChatContext, newMessage: ChatMessage): Promise<void> {
     const text = newMessage.textContent?.trim() ?? ''
     if (!text) return
     this.#bell.heard({ text })
     const redFlag = await this.#bell.redFlagCheck(text)
-    if (!redFlag) return
+    if (!redFlag) {
+      // chatCtx is this reply's own copy, so the note does not pile up in the history.
+      const note = languageNote(this.#roomLanguage, this.#bell.heardLanguage)
+      if (note) chatCtx.addMessage({ role: 'user', content: note })
+      return
+    }
 
     // StopResponse drops the user message, so add it back with a note to keep the LLM in the loop.
     const note = redFlag.outcome === 'failed' ? RED_FLAG_FAILED_NOTE : RED_FLAG_NOTE
@@ -298,24 +310,53 @@ function describeError(error: unknown): string {
 }
 
 function speechModels(env: AgentEnv, language: LanguagePreference) {
-  // The room's language setting: "auto" lets Flux detect it; a chosen language biases Flux
-  // toward it and fixes the TTS language.
-  const chosen = language === 'auto' ? undefined : language
+  const ttsLanguage = elevenLabsLanguage(language)
   return {
-    // Flux multilingual. Flux decides when the turn ends.
-    stt: new deepgram.STTv2({
-      model: 'flux-general-multi',
-      apiKey: env.deepgramApiKey,
-      ...(chosen ? { languageHint: [chosen] } : {}),
-    }),
+    stt: speechToText(env, language),
     // eleven_v3* / eleven_v4* models go through ElevenLabs' text-to-dialogue websocket.
     tts: new elevenlabs.TTS({
       apiKey: env.elevenApiKey,
       voiceId: env.elevenVoiceId,
       model: env.elevenModel,
-      ...(chosen ? { language: chosen } : {}),
+      ...(ttsLanguage ? { language: ttsLanguage } : {}),
     }),
   }
+}
+
+/**
+ * MAI-Transcribe (AI Gateway) detects the language itself; a room language becomes a hint
+ * where MAI has it. Deepgram Flux is the fallback; it only gets a hint for a Flux language.
+ * Either way the STT's end of utterance ends the turn (turnDetection 'stt').
+ */
+function speechToText(env: AgentEnv, language: LanguagePreference): stt.STT {
+  if (env.stt.provider === 'mai') {
+    return new MaiSTT({ apiKey: env.stt.aiGatewayApiKey, language })
+  }
+  const fluxHint = (FLUX_LANGUAGES as readonly string[]).includes(language)
+  return new deepgram.STTv2({
+    model: 'flux-general-multi',
+    apiKey: env.stt.deepgramApiKey,
+    ...(fluxHint ? { languageHint: [language] } : {}),
+  })
+}
+
+/**
+ * The ElevenLabs language code for a room language, or undefined to follow the text. Checked
+ * against eleven_v4_turbo: it wants "fil" for Tagalog and has no Haitian Creole ("ht" is a 400).
+ */
+export function elevenLabsLanguage(language: LanguagePreference): string | undefined {
+  if (language === 'auto' || language === 'ht') return undefined
+  return language === 'tl' ? 'fil' : language
+}
+
+/** For a room on auto: which language the STT heard, so the LLM replies in it. */
+export function languageNote(
+  roomLanguage: LanguagePreference,
+  heard: string | undefined,
+): string | undefined {
+  if (roomLanguage !== 'auto' || !heard) return undefined
+  const label = LANGUAGES.find((l) => l.code === heard)?.label ?? heard
+  return `${NOTE_PREFIX} The patient is speaking ${label} (${heard}). Reply in ${label}.`
 }
 
 const TURN_HANDLING = {

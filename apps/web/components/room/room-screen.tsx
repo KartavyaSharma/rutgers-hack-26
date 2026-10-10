@@ -29,9 +29,12 @@ import {
 import { useEffect, useState } from 'react'
 import { callForHelp, requestAction } from '@/lib/client/api'
 import {
+  AUTO_OPTION,
   CHOOSE_LANGUAGE_SUBTITLE,
   continueLabel,
+  LANGUAGE_GRID_OPTIONS,
   LANGUAGE_OPTIONS,
+  languageDir,
   languageName,
   patientLabel,
   requestIcon,
@@ -421,13 +424,16 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
 
       {firstRun ? (
         <LanguagePicker
-          options={LANGUAGE_OPTIONS}
+          options={LANGUAGE_GRID_OPTIONS}
+          autoOption={AUTO_OPTION}
           value={pickerValue}
           onChange={(value) => {
             if (isLanguagePreference(value)) setPickerValue(value)
           }}
           onContinue={finishFirstRun}
           continueLabel={continueLabel(pickerValue)}
+          {...(pickerValue === 'auto' ? {} : { continueLang: pickerValue })}
+          continueDir={languageDir(pickerValue)}
           subtitle={CHOOSE_LANGUAGE_SUBTITLE}
         />
       ) : null}

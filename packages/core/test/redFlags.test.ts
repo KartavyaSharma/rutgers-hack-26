@@ -69,3 +69,80 @@ describe('detectRedFlag', () => {
     expect(detectRedFlag(text)).toBeNull()
   })
 })
+
+describe('detectRedFlag: tl, ht, ar, ko, vi, pl', () => {
+  it.each([
+    // Tagalog
+    ['Masakit ang dibdib ko', 'chest_pain', 'tl'],
+    ['Hindi ako makahinga', 'breathing', 'tl'],
+    ['Nahulog ako sa banyo', 'fall', 'tl'],
+    ['Dumudugo ang sugat ko', 'bleeding', 'tl'],
+    ['Saklolo!', 'emergency', 'tl'],
+    ['Hindi ko maigalaw ang braso ko', 'stroke_signs', 'tl'],
+    // Haitian Creole
+    ['Mwen gen doulè nan pwatrin', 'chest_pain', 'ht'],
+    ['Mwen pa ka respire', 'breathing', 'ht'],
+    ['Mwen tonbe nan twalèt la', 'fall', 'ht'],
+    ["M'ap senyen anpil", 'bleeding', 'ht'],
+    ['Anmwe!', 'emergency', 'ht'],
+    ['Figi mwen tòde', 'stroke_signs', 'ht'],
+    // Arabic
+    ['عندي ألم في الصدر', 'chest_pain', 'ar'],
+    ['لا أستطيع التنفس', 'breathing', 'ar'],
+    ['أنا وقعت في الحمام', 'fall', 'ar'],
+    ['عندي نزيف', 'bleeding', 'ar'],
+    ['النجدة', 'emergency', 'ar'],
+    ['وجهي مائل', 'stroke_signs', 'ar'],
+    // Korean
+    ['가슴이 아파요', 'chest_pain', 'ko'],
+    ['가슴이아파요', 'chest_pain', 'ko'],
+    ['숨을 못 쉬겠어요', 'breathing', 'ko'],
+    ['제가 넘어졌어요', 'fall', 'ko'],
+    ['피가 나요', 'bleeding', 'ko'],
+    ['살려 주세요', 'emergency', 'ko'],
+    ['말이 어눌해요', 'stroke_signs', 'ko'],
+    // Vietnamese, with and without diacritics
+    ['Tôi bị đau ngực', 'chest_pain', 'vi'],
+    ['toi bi dau nguc', 'chest_pain', 'vi'],
+    ['Tôi không thở được', 'breathing', 'vi'],
+    ['Tôi bị ngã trong nhà vệ sinh', 'fall', 'vi'],
+    ['Tôi đang chảy máu', 'bleeding', 'vi'],
+    ['Cứu tôi với', 'emergency', 'vi'],
+    ['Mẹ tôi bị méo miệng', 'stroke_signs', 'vi'],
+    // Polish
+    ['Boli mnie w klatce piersiowej', 'chest_pain', 'pl'],
+    ['Nie mogę oddychać', 'breathing', 'pl'],
+    ['Upadłem w łazience', 'fall', 'pl'],
+    ['Krwawię', 'bleeding', 'pl'],
+    ['Ratunku!', 'emergency', 'pl'],
+    ['Nie mogę ruszyć ręką', 'stroke_signs', 'pl'],
+  ])('flags %j as %s (%s)', (text, category, language) => {
+    expect(detectRedFlag(text)).toMatchObject({ category, language })
+  })
+
+  it.each([
+    // Things falling are not patients falling.
+    'Nahulog ang telepono ko',
+    'Telefòn mwen tonbe',
+    'Điện thoại của tôi bị rơi',
+    'Telefon mi upadł',
+    'الصينية وقعت على الأرض',
+    '휴대폰이 떨어졌어요',
+    '의자가 넘어졌어요',
+    // Everyday requests.
+    'Kailangan ko po ng kumot',
+    'Mwen bezwen yon dra tanpri',
+    'أحتاج بطانية من فضلك',
+    '담요 좀 주세요',
+    '도와주세요',
+    'Cho tôi thêm một xíu nước',
+    'Đi từ từ thôi',
+    'Potrzebuję koca, proszę',
+    // "Not an emergency".
+    'Se pa yon ijans',
+    'Không phải cấp cứu',
+    'To nie nagły wypadek',
+  ])('does not flag %j', (text) => {
+    expect(detectRedFlag(text)).toBeNull()
+  })
+})

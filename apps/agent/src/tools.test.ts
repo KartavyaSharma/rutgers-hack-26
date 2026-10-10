@@ -349,10 +349,10 @@ describe('redFlagCheck', () => {
   })
 
   it('uses the room language when one is set', async () => {
-    const tools = makeTools(undefined, { roomLanguage: 'fr' })
+    const tools = makeTools(undefined, { roomLanguage: 'ko' })
     expect(await tools.redFlagCheck('I have chest pain')).toEqual({
       outcome: 'sent_to_nurse_now',
-      say: patientMessage('nurse_notified', 'fr'),
+      say: patientMessage('nurse_notified', 'ko'),
     })
   })
 

@@ -194,23 +194,29 @@ export interface StreamEvent {
 export const AGENT_NAME = 'bell-agent'
 
 // ---------------------------------------------------------------------------
-// Languages. Auto-detect is the default; a chosen language is one room setting that flows to
-// the speech-to-text hint (Deepgram Flux `languageHint`), the router's reply language and the
-// text-to-speech `language`. These are the 10 languages of Deepgram `flux-general-multi`.
+// Languages. Auto-detect is the default (MAI-Transcribe detects the spoken language). A chosen
+// language is one room setting that flows to the speech-to-text hint, the reply language and the
+// text-to-speech language. These are the 12 languages on the chosen language screen.
 // ---------------------------------------------------------------------------
 
 export const LANGUAGES = [
   { code: 'en', label: 'English', nativeLabel: 'English' },
   { code: 'es', label: 'Spanish', nativeLabel: 'Español' },
-  { code: 'fr', label: 'French', nativeLabel: 'Français' },
-  { code: 'de', label: 'German', nativeLabel: 'Deutsch' },
-  { code: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी' },
-  { code: 'ru', label: 'Russian', nativeLabel: 'Русский' },
+  { code: 'zh', label: 'Chinese', nativeLabel: '中文' },
+  { code: 'tl', label: 'Tagalog', nativeLabel: 'Tagalog' },
+  { code: 'ht', label: 'Haitian Creole', nativeLabel: 'Kreyòl ayisyen' },
   { code: 'pt', label: 'Portuguese', nativeLabel: 'Português' },
-  { code: 'ja', label: 'Japanese', nativeLabel: '日本語' },
-  { code: 'it', label: 'Italian', nativeLabel: 'Italiano' },
-  { code: 'nl', label: 'Dutch', nativeLabel: 'Nederlands' },
+  { code: 'ru', label: 'Russian', nativeLabel: 'Русский' },
+  { code: 'ar', label: 'Arabic', nativeLabel: 'العربية' },
+  { code: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी' },
+  { code: 'ko', label: 'Korean', nativeLabel: '한국어' },
+  { code: 'vi', label: 'Vietnamese', nativeLabel: 'Tiếng Việt' },
+  { code: 'pl', label: 'Polish', nativeLabel: 'Polski' },
 ] as const
+
+/** Languages Deepgram Flux (`flux-general-multi`, the fallback STT) understands. */
+export const FLUX_LANGUAGES = ['en', 'es', 'fr', 'de', 'hi', 'ru', 'pt', 'ja', 'it', 'nl'] as const
+
 export type LanguageCode = (typeof LANGUAGES)[number]['code']
 
 export const isLanguageCode = (value: unknown): value is LanguageCode =>

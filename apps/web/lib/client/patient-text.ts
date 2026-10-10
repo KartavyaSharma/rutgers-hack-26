@@ -62,39 +62,56 @@ export const timeAgo = (iso: string, now: number): string => {
 
 export const AUTO_LANGUAGE_LABEL = 'Auto (detect)'
 
-/** Auto first, then the 10 voice languages by their own names. */
-export const LANGUAGE_OPTIONS: readonly LanguageOption[] = [
-  { value: 'auto', label: AUTO_LANGUAGE_LABEL, sublabel: 'Any language' },
-  ...LANGUAGES.map((l) => ({
-    value: l.code,
-    label: l.nativeLabel,
-    sublabel: l.label,
-    lang: l.code,
-  })),
-]
+/** Languages written right to left. */
+const RTL_LANGUAGES: ReadonlySet<LanguagePreference> = new Set(['ar'])
+
+export const languageDir = (language: LanguagePreference): 'ltr' | 'rtl' =>
+  RTL_LANGUAGES.has(language) ? 'rtl' : 'ltr'
+
+/** "Auto (detect)": the default, the language is detected from speech. */
+export const AUTO_OPTION: LanguageOption = {
+  value: 'auto',
+  label: AUTO_LANGUAGE_LABEL,
+  sublabel: 'Any language',
+}
+
+/** The 12 languages in the board's order, by their own names. */
+export const LANGUAGE_GRID_OPTIONS: readonly LanguageOption[] = LANGUAGES.map((l) => ({
+  value: l.code,
+  label: l.nativeLabel,
+  sublabel: l.label,
+  lang: l.code,
+  dir: languageDir(l.code),
+}))
+
+/** Auto first, then the 12 languages (the Language sheet). */
+export const LANGUAGE_OPTIONS: readonly LanguageOption[] = [AUTO_OPTION, ...LANGUAGE_GRID_OPTIONS]
 
 export const languageName = (language: LanguagePreference): string =>
   language === 'auto'
     ? AUTO_LANGUAGE_LABEL
     : (LANGUAGES.find((l) => l.code === language)?.nativeLabel ?? AUTO_LANGUAGE_LABEL)
 
+// From the LangStart board.
 const CONTINUE: Record<LanguagePreference, string> = {
   auto: 'Continue',
   en: 'Continue',
   es: 'Continuar',
-  fr: 'Continuer',
-  de: 'Weiter',
-  hi: 'आगे बढ़ें',
-  ru: 'Далее',
+  zh: '继续',
+  tl: 'Magpatuloy',
+  ht: 'Kontinye',
   pt: 'Continuar',
-  ja: '続ける',
-  it: 'Continua',
-  nl: 'Doorgaan',
+  ru: 'Далее',
+  ar: 'متابعة',
+  hi: 'आगे बढ़ें',
+  ko: '계속',
+  vi: 'Tiếp tục',
+  pl: 'Dalej',
 }
 
 /** "Continue" in the chosen language, for the first-run screen. */
 export const continueLabel = (language: LanguagePreference): string => CONTINUE[language]
 
-/** "Choose your language" in a few of the supported languages. */
+/** "Choose your language" in other languages (from the LangStart board). */
 export const CHOOSE_LANGUAGE_SUBTITLE =
-  'Elija su idioma · Choisissez votre langue · अपनी भाषा चुनें · 言語を選んでください'
+  'Elija su idioma · 选择您的语言 · Pumili ng wika · Chwazi lang ou'
