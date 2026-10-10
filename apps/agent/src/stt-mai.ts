@@ -38,7 +38,14 @@ export const MAI_SAMPLE_RATE = 16_000
 
 /** Silence that ends an utterance. Also the main part of the end-of-turn delay. */
 export const DEFAULT_MAI_SILENCE_MS = 600
-const BATCH_TIMEOUT_MS = 5000
+/**
+ * One batch attempt's timeout. The batch model answers in 0.3-1.2 s. Attempts never retry inside
+ * the AI SDK (maxRetries 0): its 2 s / 4 s backoff used to run into our timeout and fail the
+ * utterance with "Delay was aborted" before the retry ever happened.
+ */
+const BATCH_ATTEMPT_TIMEOUT_MS = 3000
+/** After every attempt failed: wait this long, then one last attempt (bounded by the timeout). */
+const LAST_RETRY_BACKOFF_MS = 250
 /** How long to wait for the streaming final when the batch call failed or found no words. */
 const STREAM_FINAL_GRACE_MS = 1500
 /** Silence after which the batch call starts speculatively, before the utterance is committed. */
@@ -78,6 +85,8 @@ export function gatewayTranscribers(apiKey: string): MaiTranscribers {
         model: gateway.transcriptionModel(MAI_BATCH_MODEL),
         audio: wav,
         abortSignal,
+        // retries are ours (MaiSegmenter), with fresh timeouts and logging
+        maxRetries: 0,
         ...(language ? { providerOptions: { azure: { locales: [language] } } } : {}),
       })
       return { text: result.text, language: detectedLanguage(result) }
@@ -165,6 +174,11 @@ export interface MaiSegmenterOptions {
   logger?: MaiSegmenterLogger
   /** Called after MAX_CONSECUTIVE_FAILURES utterances in a row produced no transcript at all. */
   onRepeatedFailure?: (error: Error) => void
+  /**
+   * Called when speech could not be transcribed at all (every attempt failed), so the patient can
+   * be asked to repeat it instead of hearing nothing.
+   */
+  onLost?: () => void
 }
 
 interface Utterance {
@@ -186,16 +200,26 @@ interface Utterance {
 
 /** A final transcript from one of the two MAI calls. */
 interface Candidate {
-  source: 'batch' | 'speculative' | 'stream'
+  source: 'batch' | 'speculative' | 'retry' | 'stream'
   text: string
   /** Only the batch model reports one. */
   language: string | undefined
 }
 
-/** A batch call's result: a transcript, nothing (no words), or an error. */
+/** A batch call's result: a transcript, nothing (no words), an error, or cancelled. */
 interface BatchOutcome {
   candidate: Candidate | undefined
   error: unknown
+}
+
+/** HTTP status and kind of a failed call, for the logs (no request data). */
+function failureInfo(error: unknown): Record<string, unknown> {
+  const fields = error as { statusCode?: unknown; isRetryable?: unknown; name?: unknown }
+  return {
+    status: typeof fields?.statusCode === 'number' ? fields.statusCode : undefined,
+    retryable: typeof fields?.isRetryable === 'boolean' ? fields.isRetryable : undefined,
+    error: describeError(error),
+  }
 }
 
 const NOOP_LOGGER: MaiSegmenterLogger = { debug() {}, info() {}, warn() {} }
@@ -210,6 +234,7 @@ export class MaiSegmenter {
   readonly #language: string | undefined
   readonly #log: MaiSegmenterLogger
   readonly #onRepeatedFailure: ((error: Error) => void) | undefined
+  readonly #onLost: (() => void) | undefined
   #current: Utterance | undefined
   /** Resolves when everything emitted so far is out; each utterance chains onto it. */
   #tail: Promise<void> = Promise.resolve()
@@ -225,6 +250,7 @@ export class MaiSegmenter {
     this.#lastLanguage = options.roomLanguage
     this.#log = options.logger ?? NOOP_LOGGER
     this.#onRepeatedFailure = options.onRepeatedFailure
+    this.#onLost = options.onLost
   }
 
   /** Speech started; `preroll` is the audio the VAD already holds for it. */
@@ -271,7 +297,7 @@ export class MaiSegmenter {
     const abort = new AbortController()
     utterance.speculative = {
       abort,
-      result: this.#batch(concat(utterance.chunks), 'speculative', abort.signal),
+      result: this.#batch(concat(utterance.chunks), 'speculative', 1, abort.signal),
     }
   }
 
@@ -399,14 +425,22 @@ export class MaiSegmenter {
   }
 
   /**
-   * The utterance's final: whichever valid, non-empty transcript arrives first, the batch call
-   * (speculative if it is still valid, else a fresh one) or the streaming final. A failed or empty
-   * batch call waits STREAM_FINAL_GRACE_MS for the stream; a failed stream never blocks the batch.
+   * The utterance's final: whichever valid, non-empty transcript arrives first, the batch call or
+   * the streaming final. The batch call is the speculative one if it is still valid (a failed one
+   * is followed by a fresh call on all the audio), else a fresh one. A failed or empty batch call
+   * waits STREAM_FINAL_GRACE_MS for the stream; a failed stream never blocks the batch. If nothing
+   * worked, one last batch attempt; if that fails too, onLost (the patient is asked to repeat).
    */
   async #resolveFinal(
     utterance: Utterance,
   ): Promise<{ text: string; language: string | undefined } | undefined> {
-    const batch = utterance.speculative?.result ?? this.#batch(concat(utterance.chunks), 'batch')
+    const speech = concat(utterance.chunks)
+    const speculative = utterance.speculative?.result
+    const batch: Promise<BatchOutcome> = speculative
+      ? speculative.then((outcome) =>
+          outcome.error === undefined ? outcome : this.#batch(speech, 'batch', 2),
+        )
+      : this.#batch(speech, 'batch', 1)
     const stream: Promise<Candidate | undefined> = utterance.streamedFinal.then((text) =>
       text ? { source: 'stream', text, language: undefined } : undefined,
     )
@@ -417,7 +451,7 @@ export class MaiSegmenter {
           setTimeout(() => resolve(undefined), STREAM_FINAL_GRACE_MS),
         ),
       ])
-    const winner = await Promise.race([
+    let winner = await Promise.race([
       batch.then((outcome) => outcome.candidate ?? graceForStream()),
       stream.then((candidate) => candidate ?? batch.then((outcome) => outcome.candidate)),
     ])
@@ -425,20 +459,15 @@ export class MaiSegmenter {
     if (!winner) {
       const { error } = await batch
       if (error === undefined) return undefined // no words: noise or a cough
-      this.#failures++
-      this.#log.warn(
-        { error: describeError(error), failures: this.#failures },
-        'MAI could not transcribe an utterance',
-      )
-      if (this.#failures >= MAX_CONSECUTIVE_FAILURES) {
-        this.#failures = 0
-        this.#onRepeatedFailure?.(
-          new APIConnectionError({
-            message: `MAI failed to transcribe ${MAX_CONSECUTIVE_FAILURES} utterances in a row: ${describeError(error)}`,
-          }),
-        )
+      // Every attempt failed (often the gateway, briefly): one last try with a fresh controller.
+      await new Promise((resolve) => setTimeout(resolve, LAST_RETRY_BACKOFF_MS))
+      const last = this.#closed ? undefined : await this.#batch(speech, 'retry', 3)
+      winner = last?.candidate
+      if (!winner) {
+        if (last && last.error === undefined) return undefined
+        this.#lost(last?.error ?? error)
+        return undefined
       }
-      return undefined
     }
 
     this.#failures = 0
@@ -460,13 +489,42 @@ export class MaiSegmenter {
     return { text: winner.text, language: resolved.language }
   }
 
-  /** One batch call, with a timeout. Never rejects. `cancel` drops a speculative call. */
+  /** Speech that could not be transcribed: never silent, the patient is asked to repeat. */
+  #lost(error: unknown): void {
+    this.#failures++
+    this.#log.warn(
+      { ...failureInfo(error), failures: this.#failures },
+      'MAI could not transcribe an utterance; asking the patient to repeat',
+    )
+    if (!this.#closed) {
+      try {
+        this.#onLost?.()
+      } catch (lostError) {
+        this.#log.warn({ error: describeError(lostError) }, 'could not ask the patient to repeat')
+      }
+    }
+    if (this.#failures >= MAX_CONSECUTIVE_FAILURES) {
+      this.#failures = 0
+      this.#onRepeatedFailure?.(
+        new APIConnectionError({
+          message: `MAI failed to transcribe ${MAX_CONSECUTIVE_FAILURES} utterances in a row: ${describeError(error)}`,
+        }),
+      )
+    }
+  }
+
+  /**
+   * One batch attempt with its own timeout (and `cancel` for a speculative call). Never rejects.
+   * Every attempt is logged with its HTTP status on failure.
+   */
   async #batch(
     speech: Int16Array,
-    source: 'batch' | 'speculative',
+    source: 'batch' | 'speculative' | 'retry',
+    attempt: number,
     cancel?: AbortSignal,
   ): Promise<BatchOutcome> {
-    const timeout = AbortSignal.timeout(BATCH_TIMEOUT_MS)
+    const started = performance.now()
+    const timeout = AbortSignal.timeout(BATCH_ATTEMPT_TIMEOUT_MS)
     try {
       const result = await this.#transcribers.batch({
         wav: pcmToWav(speech),
@@ -474,13 +532,28 @@ export class MaiSegmenter {
         abortSignal: cancel ? AbortSignal.any([cancel, timeout]) : timeout,
       })
       const text = result.text.trim()
+      this.#log.debug(
+        { source, attempt, ms: Math.round(performance.now() - started), empty: !text },
+        'MAI batch attempt',
+      )
       // Empty: noise or a cough, not words.
       return {
         candidate: text ? { source, text, language: result.language } : undefined,
         error: undefined,
       }
     } catch (error) {
-      return { candidate: undefined, error: cancel?.aborted ? undefined : error }
+      if (cancel?.aborted) return { candidate: undefined, error: undefined } // speech resumed
+      this.#log.warn(
+        {
+          source,
+          attempt,
+          ms: Math.round(performance.now() - started),
+          timedOut: timeout.aborted,
+          ...failureInfo(error),
+        },
+        'MAI batch attempt failed',
+      )
+      return { candidate: undefined, error }
     }
   }
 }
@@ -561,6 +634,8 @@ export interface MaiSTTOptions {
   language?: string
   /** Silence that ends an utterance. */
   silenceMs?: number
+  /** Speech could not be transcribed at all; the agent should ask the patient to repeat. */
+  onLost?: () => void
   transcribers?: MaiTranscribers
 }
 
@@ -569,6 +644,7 @@ export class MaiSTT extends stt.STT {
   readonly #transcribers: MaiTranscribers
   readonly #language: string | undefined
   readonly #roomLanguage: string | undefined
+  readonly #onLost: (() => void) | undefined
   readonly #vad: inference.VAD
 
   constructor(options: MaiSTTOptions) {
@@ -577,6 +653,7 @@ export class MaiSTT extends stt.STT {
     const language = options.language ?? 'auto'
     this.#language = maiLanguageHint(language)
     this.#roomLanguage = language === 'auto' ? undefined : language
+    this.#onLost = options.onLost
     this.#vad = new inference.VAD({
       minSilenceDuration: options.silenceMs ?? DEFAULT_MAI_SILENCE_MS,
       minSpeechDuration: 100,
@@ -601,6 +678,7 @@ export class MaiSTT extends stt.STT {
       transcribers: this.#transcribers,
       language: this.#language,
       roomLanguage: this.#roomLanguage,
+      onLost: this.#onLost,
       connOptions: options?.connOptions ?? DEFAULT_API_CONNECT_OPTIONS,
     })
   }
@@ -613,6 +691,7 @@ class MaiSpeechStream extends stt.SpeechStream {
     transcribers: MaiTranscribers
     language: string | undefined
     roomLanguage: string | undefined
+    onLost: (() => void) | undefined
   }
 
   constructor(
@@ -622,6 +701,7 @@ class MaiSpeechStream extends stt.SpeechStream {
       transcribers: MaiTranscribers
       language: string | undefined
       roomLanguage: string | undefined
+      onLost: (() => void) | undefined
       connOptions: APIConnectOptions
     },
   ) {
@@ -644,6 +724,7 @@ class MaiSpeechStream extends stt.SpeechStream {
       transcribers: this.#options.transcribers,
       language: this.#options.language,
       roomLanguage: this.#options.roomLanguage,
+      onLost: this.#options.onLost,
       logger,
       emit: (event) => {
         if (!this.queue.closed) this.queue.put(event)

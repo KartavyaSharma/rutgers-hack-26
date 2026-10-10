@@ -39,7 +39,7 @@ import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node'
 import { z } from 'zod'
 import { type AgentEnv, agentEnv, loadRootEnv } from './env'
 import { interruptionWords, MIN_INTERRUPTION_MS, MIN_INTERRUPTION_WORDS } from './interruptions'
-import { ConversationLLM } from './llm'
+import { ConversationLLM, DEFAULT_HEDGE_AFTER_MS, hedgeStream } from './llm'
 import { PhraseCache } from './phrases'
 import { buildInstructions, NOTE_PREFIX } from './prompt'
 import { MaiSTT } from './stt-mai'
@@ -54,6 +54,28 @@ const RED_FLAG_FAILED_NOTE = `${NOTE_PREFIX} The patient said something urgent, 
 
 type LlmStream = NonNullable<Awaited<ReturnType<voice.Agent['llmNode']>>>
 type LlmChunk = LlmStream extends ReadableStream<infer C> ? C : never
+
+/** A real LLM output chunk: content (even whitespace) or a tool call; not usage-only. */
+function isResponseChunk(chunk: LlmChunk): boolean {
+  if (typeof chunk === 'string') return chunk.length > 0
+  if (typeof chunk === 'object' && chunk !== null && 'delta' in chunk) {
+    return Boolean(chunk.delta?.content || chunk.delta?.toolCalls?.length)
+  }
+  return false
+}
+
+/**
+ * Before the first words: the chunk without its whitespace-only text (undefined to drop it).
+ * Tool calls, usage and other chunks pass through unchanged.
+ */
+function withoutWhitespaceText(chunk: LlmChunk): LlmChunk | undefined {
+  if (typeof chunk === 'string') return undefined
+  if (typeof chunk === 'object' && chunk !== null && 'delta' in chunk && chunk.delta?.content) {
+    if (chunk.delta.toolCalls?.length) return { ...chunk, delta: { ...chunk.delta, content: '' } }
+    return chunk.usage ? { ...chunk, delta: undefined } : undefined
+  }
+  return chunk
+}
 
 /** True when an LLM output chunk carries text that will be spoken. */
 function hasSpokenText(chunk: LlmChunk): boolean {
@@ -94,16 +116,23 @@ export class BellAgent extends voice.Agent {
   readonly #bell: BellTools
   readonly #phrases: PhraseCache
   readonly #roomLanguage: LanguagePreference
+  readonly #hedgeMs: number
   /** Whether the LLM reply being generated has spoken text (the tool phrase). */
   #replyHasText = false
   /** Whether "One moment." was already said for this reply. */
   #fallbackSaid = false
 
-  constructor(language: LanguagePreference, bell: BellTools, phrases: PhraseCache) {
+  constructor(
+    language: LanguagePreference,
+    bell: BellTools,
+    phrases: PhraseCache,
+    options: { hedgeMs?: number } = {},
+  ) {
     super({ instructions: buildInstructions(language), tools: buildTools(bell) })
     this.#bell = bell
     this.#phrases = phrases
     this.#roomLanguage = language
+    this.#hedgeMs = options.hedgeMs ?? DEFAULT_HEDGE_AFTER_MS
   }
 
   /** The patient just tapped the mic: a short intro they can talk over, then just listen. */
@@ -131,18 +160,40 @@ export class BellAgent extends voice.Agent {
     throw new voice.StopResponse()
   }
 
-  /** Watches each reply for spoken text, so a tool call without a phrase gets the fallback. */
+  /**
+   * One LLM reply. Hedged: if nothing arrives within the hedge delay, an identical second request
+   * races the first (only the winner is forwarded). Logs the time to first chunk every turn.
+   * Whitespace before the first words is dropped, so a "stay silent" reply (Qwen sends "\n\n" for
+   * talk not meant for it) is truly empty: no speech, no assistant message. Also watches for
+   * spoken text, so a tool call without a phrase gets the fallback phrase.
+   */
   override async llmNode(
     ...args: Parameters<voice.Agent['llmNode']>
   ): ReturnType<voice.Agent['llmNode']> {
     this.#replyHasText = false
     this.#fallbackSaid = false
-    const stream = await super.llmNode(...args)
+    const stream = await hedgeStream(() => super.llmNode(...args), {
+      afterMs: this.#hedgeMs,
+      isFirstChunk: isResponseChunk,
+      onSettled: ({ fired, winner, firstChunkMs }) => {
+        const ms = Math.round(firstChunkMs)
+        if (fired) log().info({ fired, winner, firstChunkMs: ms }, 'llm hedge')
+        log().info({ firstChunkMs: ms, hedged: fired }, 'llm first chunk')
+      },
+    })
     if (!stream) return stream
     return stream.pipeThrough(
       new TransformStream<LlmChunk, LlmChunk>({
         transform: (chunk, controller) => {
-          if (!this.#replyHasText && hasSpokenText(chunk)) this.#replyHasText = true
+          if (!this.#replyHasText) {
+            if (hasSpokenText(chunk)) {
+              this.#replyHasText = true
+            } else {
+              const kept = withoutWhitespaceText(chunk)
+              if (kept !== undefined) controller.enqueue(kept)
+              return
+            }
+          }
           controller.enqueue(chunk)
         },
       }),
@@ -252,12 +303,13 @@ export class EmergencyAgent extends voice.Agent {
     if (language) this.#heardLanguage = language
   }
 
-  get #language(): string {
+  /** Room setting first, then what the STT heard, then English. */
+  get language(): string {
     return this.#roomLanguage !== 'auto' ? this.#roomLanguage : (this.#heardLanguage ?? 'en')
   }
 
   override async onEnter(): Promise<void> {
-    this.#phrases.say(this.session, patientMessage('emergency_listening', this.#language))
+    this.#phrases.say(this.session, patientMessage('emergency_listening', this.language))
   }
 
   override async onUserTurnCompleted(
@@ -265,7 +317,7 @@ export class EmergencyAgent extends voice.Agent {
     newMessage: ChatMessage,
   ): Promise<void> {
     const text = newMessage.textContent?.trim() ?? ''
-    const say = text ? await this.#notes.add(text, this.#language) : undefined
+    const say = text ? await this.#notes.add(text, this.language) : undefined
     if (say) this.#phrases.say(this.session, say)
     throw new voice.StopResponse()
   }
@@ -328,10 +380,10 @@ function describeError(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
 }
 
-function speechModels(env: AgentEnv, language: LanguagePreference) {
+function speechModels(env: AgentEnv, language: LanguagePreference, onLost: () => void) {
   const ttsLanguage = elevenLabsLanguage(language)
   return {
-    stt: speechToText(env, language),
+    stt: speechToText(env, language, onLost),
     // eleven_v3* / eleven_v4* models go through ElevenLabs' text-to-dialogue websocket.
     tts: new elevenlabs.TTS({
       apiKey: env.elevenApiKey,
@@ -347,9 +399,9 @@ function speechModels(env: AgentEnv, language: LanguagePreference) {
  * where MAI has it. Deepgram Flux is the fallback; it only gets a hint for a Flux language.
  * Either way the STT's end of utterance ends the turn (turnDetection 'stt').
  */
-function speechToText(env: AgentEnv, language: LanguagePreference): stt.STT {
+function speechToText(env: AgentEnv, language: LanguagePreference, onLost: () => void): stt.STT {
   if (env.stt.provider === 'mai') {
-    return new MaiSTT({ apiKey: env.stt.aiGatewayApiKey, language })
+    return new MaiSTT({ apiKey: env.stt.aiGatewayApiKey, language, onLost })
   }
   const fluxHint = (FLUX_LANGUAGES as readonly string[]).includes(language)
   return new deepgram.STTv2({
@@ -419,10 +471,19 @@ function fixedPhrases(language: string, mode: 'request' | 'emergency'): string[]
     return [
       patientMessage('emergency_listening', language),
       patientMessage('emergency_noted', language),
+      patientMessage('say_again', language),
     ]
   }
   return (
-    ['listening_intro', 'one_moment', 'sent', 'cancelled', 'nurse_notified', 'save_failed'] as const
+    [
+      'listening_intro',
+      'one_moment',
+      'sent',
+      'cancelled',
+      'nurse_notified',
+      'save_failed',
+      'say_again',
+    ] as const
   ).map((key) => patientMessage(key, language))
 }
 
@@ -438,7 +499,10 @@ export default defineAgent({
     const env = agentEnv()
     const api = { appUrl: env.appUrl, agentSharedSecret: env.agentSharedSecret }
     const roomLogger = log().child({ roomId: job.roomId })
-    const models = speechModels(env, job.language)
+    // MAI could not transcribe something the patient said: ask them to repeat (set once the
+    // session exists).
+    let onLost = () => {}
+    const models = speechModels(env, job.language, () => onLost())
     const phrases = new PhraseCache({
       tts: models.tts,
       voiceKey: `${env.elevenModel}|${env.elevenVoiceId ?? 'default'}`,
@@ -457,6 +521,9 @@ export default defineAgent({
         new EmergencyNotes({ requestId: job.emergencyRequestId, api, logger: roomLogger }),
         phrases,
       )
+      onLost = () => {
+        phrases.say(session, patientMessage('say_again', agent.language))
+      }
       session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
         if (!ev.isFinal) return
         agent.heard(ev.language)
@@ -484,6 +551,9 @@ export default defineAgent({
       logger: roomLogger,
       announce: (announcement) => void announce(session, phrases, announcement),
     })
+    onLost = () => {
+      phrases.say(session, patientMessage('say_again', bell.messageLanguage))
+    }
     const warmed = new Set<string>([startLanguage])
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
       if (!ev.isFinal) return
@@ -497,7 +567,7 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.Close, () => bell.close())
 
     await session.start({
-      agent: new BellAgent(job.language, bell, phrases),
+      agent: new BellAgent(job.language, bell, phrases, { hedgeMs: env.cerebrasAgentHedgeMs }),
       room: ctx.room,
       // Typed text goes through the web app.
       inputOptions,

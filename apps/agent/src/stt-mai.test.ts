@@ -56,10 +56,12 @@ function harness(
 ) {
   const events: stt.SpeechEvent[] = []
   const onRepeatedFailure = vi.fn()
+  const onLost = vi.fn()
   const segmenter = new MaiSegmenter({
     transcribers,
     emit: (event) => events.push(event),
     onRepeatedFailure,
+    onLost,
     ...options,
   })
   /** [type, text, language] per event, for compact assertions. */
@@ -68,7 +70,7 @@ function harness(
       const alt = e.alternatives?.[0]
       return alt ? [e.type, alt.text, alt.language] : [e.type]
     })
-  return { segmenter, events, summary, onRepeatedFailure }
+  return { segmenter, events, summary, onRepeatedFailure, onLost }
 }
 
 const pcm = (samples = 320) => new Int16Array(samples).fill(1000)
@@ -242,8 +244,8 @@ describe('MaiSegmenter', () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] })
     try {
       const failing = () => Promise.reject(new Error('unavailable'))
-      const mai = fakeMai([session([]), session([]), session([])], [failing, failing, failing])
-      const { segmenter, onRepeatedFailure } = harness(mai)
+      const mai = fakeMai([session([]), session([]), session([])], Array(6).fill(failing))
+      const { segmenter, onRepeatedFailure, onLost } = harness(mai)
 
       for (let i = 0; i < 3; i++) {
         segmenter.start([pcm()])
@@ -252,11 +254,111 @@ describe('MaiSegmenter', () => {
         await ended
       }
 
+      expect(onLost).toHaveBeenCalledTimes(3)
+      expect(mai.batch).toHaveBeenCalledTimes(6)
       expect(onRepeatedFailure).toHaveBeenCalledTimes(1)
       expect(onRepeatedFailure.mock.calls[0]?.[0]).toMatchObject({ name: 'APIConnectionError' })
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('MaiSegmenter batch retries (never drop an utterance silently)', () => {
+  /** A batch call that only ends when aborted, like a real request. */
+  const untilAborted: MaiTranscribers['batch'] = ({ abortSignal }) =>
+    new Promise((_, reject) => {
+      abortSignal.addEventListener('abort', () =>
+        reject(new DOMException('This operation was aborted', 'AbortError')),
+      )
+    })
+  const gateway503 = Object.assign(new Error('Transcription provider error'), {
+    statusCode: 503,
+    isRetryable: true,
+  })
+
+  it('live bug: stream fails, speech resumes during speculation, the batch needs a retry', async () => {
+    const mai = fakeMai(
+      [session([{ type: 'error', error: { message: 'Transcription provider stream error' } }])],
+      [
+        () => Promise.reject(gateway503), // commit-time batch: the gateway hiccups
+        async () => ({ text: 'Actually, never mind, cancel that.', language: 'en' }), // retry
+      ],
+    )
+    mai.batch.mockImplementationOnce(untilAborted) // speculative call, dropped when speech resumes
+    const { segmenter, summary, onLost } = harness(mai)
+
+    segmenter.start([new Int16Array([1])])
+    await tick()
+    segmenter.speculate()
+    segmenter.resumed() // 70 ms later the patient goes on talking
+    segmenter.audio(new Int16Array([2]))
+    await segmenter.end()
+
+    expect(mai.batch).toHaveBeenCalledTimes(3)
+    expect(mai.batch.mock.calls[0]?.[0].abortSignal.aborted).toBe(true)
+    // the retry got a fresh, live signal and all the audio
+    const retry = mai.batch.mock.calls[2]?.[0]
+    expect(retry?.abortSignal.aborted).toBe(false)
+    expect(retry && Array.from(new Int16Array(retry.wav.slice(44).buffer))).toEqual([1, 2])
+    expect(summary()).toEqual([
+      [START_OF_SPEECH],
+      [FINAL_TRANSCRIPT, 'Actually, never mind, cancel that.', 'en'],
+      [END_OF_SPEECH, 'Actually, never mind, cancel that.', 'en'],
+    ])
+    expect(onLost).not.toHaveBeenCalled()
+  })
+
+  it('follows a failed speculative call with a fresh call on all the audio', async () => {
+    const mai = fakeMai(
+      [session([])],
+      [() => Promise.reject(gateway503), async () => ({ text: 'Water please', language: 'en' })],
+    )
+    const { segmenter, summary } = harness(mai)
+
+    segmenter.start([new Int16Array([1])])
+    segmenter.speculate()
+    segmenter.audio(new Int16Array([0]))
+    await segmenter.end()
+
+    expect(mai.batch).toHaveBeenCalledTimes(2)
+    const fresh = mai.batch.mock.calls[1]?.[0]
+    expect(fresh && Array.from(new Int16Array(fresh.wav.slice(44).buffer))).toEqual([1, 0])
+    expect(summary().at(-2)).toEqual([FINAL_TRANSCRIPT, 'Water please', 'en'])
+  })
+
+  it('asks the patient to repeat when every attempt fails', async () => {
+    const mai = fakeMai(
+      [
+        session([
+          { type: 'transcript-partial', text: 'cancel' },
+          { type: 'error', error: {} },
+        ]),
+      ],
+      [() => Promise.reject(gateway503), () => Promise.reject(gateway503)],
+    )
+    const { segmenter, summary, onLost } = harness(mai)
+
+    segmenter.start([pcm()])
+    await tick()
+    await segmenter.end()
+
+    expect(mai.batch).toHaveBeenCalledTimes(2)
+    expect(onLost).toHaveBeenCalledTimes(1)
+    // the started utterance is closed, with no made-up transcript
+    expect(summary()).toEqual([
+      [START_OF_SPEECH],
+      [INTERIM_TRANSCRIPT, 'cancel', ''],
+      [END_OF_SPEECH],
+    ])
+  })
+
+  it('does not ask to repeat for noise (no words, no error)', async () => {
+    const mai = fakeMai([session([])], [async () => ({ text: '' })])
+    const { segmenter, onLost } = harness(mai)
+    segmenter.start([pcm()])
+    await segmenter.end()
+    expect(onLost).not.toHaveBeenCalled()
   })
 })
 

@@ -32,6 +32,7 @@ describe('patientMessage', () => {
     expect(patientMessage('sent', 'en')).toBe("Sent. Someone's coming.")
     expect(patientMessage('nurse_notified', 'en')).toBe('Your nurse is on the way.')
     expect(patientMessage('ask_again', 'en')).toBe('Okay. What do you need?')
+    expect(patientMessage('say_again', 'en')).toBe('Sorry, say that again?')
     expect(patientMessage('save_failed', 'en')).toBe(
       "Couldn't send that. Press “I need help immediately”.",
     )
@@ -62,6 +63,8 @@ describe('patientMessage', () => {
     expect(patientMessage('cancelled', 'fr')).toBe("D'accord, c'est annulé.")
     expect(patientMessage('one_moment', 'de')).toBe('Einen Moment.')
     expect(patientMessage('one_moment', 'ja')).toBe('少しお待ちください。')
+    expect(patientMessage('say_again', 'es')).toBe('Perdona, ¿me lo repites?')
+    expect(patientMessage('say_again', 'zh')).toBe('不好意思，请再说一遍？')
   })
 })
 

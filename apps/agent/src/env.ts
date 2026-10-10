@@ -34,6 +34,17 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
 /** Kurt's default for snappier replies; CEREBRAS_AGENT_REASONING_EFFORT overrides it. */
 export const DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT: ReasoningEffort = 'low'
 
+/** CEREBRAS_AGENT_HEDGE_MS: start a second LLM request after this long with no output. */
+// Cerebras first chunks are usually 150–300 ms but spike to 2–5 s per request; hedge early.
+export const DEFAULT_CEREBRAS_AGENT_HEDGE_MS = 400
+
+/** A whole number of ms >= 0, or undefined. */
+function readMs(name: string): number | undefined {
+  const raw = read(name)
+  if (raw === undefined || !/^\d+$/.test(raw)) return undefined
+  return Number(raw)
+}
+
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   typeof value === 'string' && (REASONING_EFFORTS as readonly string[]).includes(value)
 
@@ -77,6 +88,14 @@ export function envWarnings(): string[] {
       `CEREBRAS_AGENT_REASONING_EFFORT must be one of ${REASONING_EFFORTS.join(', ')}; using ${DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT}`,
     )
   }
+  if (
+    read('CEREBRAS_AGENT_HEDGE_MS') !== undefined &&
+    readMs('CEREBRAS_AGENT_HEDGE_MS') === undefined
+  ) {
+    warnings.push(
+      `CEREBRAS_AGENT_HEDGE_MS must be a whole number of ms (0 = off); using ${DEFAULT_CEREBRAS_AGENT_HEDGE_MS}`,
+    )
+  }
   const nc = read('NOISE_CANCELLATION')?.toLowerCase()
   if (nc !== undefined && nc !== 'bvc' && nc !== 'off') {
     warnings.push('NOISE_CANCELLATION must be bvc or off; using bvc')
@@ -103,6 +122,8 @@ export interface AgentEnv {
   cerebrasApiKey: string
   cerebrasAgentModel: string
   cerebrasAgentReasoningEffort: ReasoningEffort
+  /** Hedge the conversation LLM after this many ms without output; 0 = off. */
+  cerebrasAgentHedgeMs: number
   /** Base URL of the web app, without a trailing slash. */
   appUrl: string
   agentSharedSecret: string
@@ -126,6 +147,7 @@ export function agentEnv(): AgentEnv {
     cerebrasAgentReasoningEffort: isReasoningEffort(effort)
       ? effort
       : DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT,
+    cerebrasAgentHedgeMs: readMs('CEREBRAS_AGENT_HEDGE_MS') ?? DEFAULT_CEREBRAS_AGENT_HEDGE_MS,
     appUrl: (read('APP_URL') ?? DEFAULT_APP_URL).replace(/\/+$/, ''),
     agentSharedSecret: required('AGENT_SHARED_SECRET'),
   }
