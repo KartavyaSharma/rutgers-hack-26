@@ -282,7 +282,7 @@ function buildTools(bell: BellTools) {
       }),
       execute: async (args, { ctx }) => {
         toolStarted(ctx.session)
-        void bell.sendRequest(args)
+        void bell.sendRequest(args, ctx.speechHandle?.id)
         return undefined
       },
     }),
@@ -318,7 +318,7 @@ function buildTools(bell: BellTools) {
       }),
       execute: async (args, { ctx }) => {
         toolStarted(ctx.session)
-        void bell.callMyNurse(args)
+        void bell.callMyNurse(args, ctx.speechHandle?.id)
         return undefined
       },
     }),

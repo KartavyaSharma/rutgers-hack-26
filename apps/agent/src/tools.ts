@@ -57,6 +57,8 @@ const AGENT_CANCEL_WINDOW_MS = 15_000
 
 /** How long to wait for more results before announcing them together. */
 export const ANNOUNCE_DEBOUNCE_MS = 300
+/** A turn's confirmation waits for all its saves, but never longer than this after the first lands. */
+export const TURN_ANNOUNCE_CAP_MS = 3000
 
 export interface BellToolsOptions {
   roomId: string
@@ -122,6 +124,11 @@ export class BellTools {
   /** Sends still running, so cancel_request("last") can wait for the one just asked for. */
   readonly #running = new Set<Promise<unknown>>()
   #batch: AnnouncedResult[] = []
+  /** Saves started by one LLM reply (keyed by its speech handle id), announced together once all settle. */
+  readonly #turns = new Map<
+    string,
+    { started: number; results: AnnouncedResult[]; cap?: ReturnType<typeof setTimeout> }
+  >()
   #batchTimer: ReturnType<typeof setTimeout> | undefined
   #heardLanguage: string | undefined
   #lastPatientText: string | undefined
@@ -196,19 +203,26 @@ export class BellTools {
   }
 
   /** send_request: classify, then send right away. Announced when it lands. Never rejects. */
-  sendRequest(input: {
-    request: string
-    readBack: string
-    staffSummary: string
-  }): Promise<SendOutcome> {
-    return this.#track(this.#sendRequest(input))
+  sendRequest(
+    input: {
+      request: string
+      readBack: string
+      staffSummary: string
+    },
+    turnId?: string,
+  ): Promise<SendOutcome> {
+    this.#turnStarted(turnId)
+    return this.#track(this.#sendRequest(input, turnId))
   }
 
-  async #sendRequest(input: {
-    request: string
-    readBack: string
-    staffSummary: string
-  }): Promise<SendOutcome> {
+  async #sendRequest(
+    input: {
+      request: string
+      readBack: string
+      staffSummary: string
+    },
+    turnId?: string,
+  ): Promise<SendOutcome> {
     const label = oneLine(input.readBack, 80) || oneLine(input.staffSummary, 80)
     let decision: RouteResult
     try {
@@ -221,25 +235,28 @@ export class BellTools {
     } catch (error) {
       // The classifier never rejects; this keeps the promise for callers anyway.
       this.#log.error({ error: describeError(error) }, 'classification failed')
-      this.#queue({ kind: 'failed', label, language: this.messageLanguage })
+      this.#queue({ kind: 'failed', label, language: this.messageLanguage }, turnId)
       return { outcome: 'failed' }
     }
 
     const nurse = needsNurseNow(decision)
     const saved = await this.#post(input.request, decision)
     if (!saved.ok) {
-      this.#queue({ kind: 'failed', label, language: decision.language })
+      this.#queue({ kind: 'failed', label, language: decision.language }, turnId)
       return { outcome: 'failed' }
     }
     if (saved.requestId) {
       this.#sent.push({ id: saved.requestId, label, language: decision.language, seq: ++this.#seq })
     }
-    this.#queue({
-      kind: nurse ? 'nurse' : 'sent',
-      label,
-      language: decision.language,
-      requestId: saved.requestId,
-    })
+    this.#queue(
+      {
+        kind: nurse ? 'nurse' : 'sent',
+        label,
+        language: decision.language,
+        requestId: saved.requestId,
+      },
+      turnId,
+    )
     return { outcome: 'sent', requestId: saved.requestId, nurse }
   }
 
@@ -296,16 +313,20 @@ export class BellTools {
   }
 
   /** call_my_nurse: an immediate nurse request. Announced when it lands. Never rejects. */
-  callMyNurse(input: {
-    reason: string
-    clinical: boolean
-    /** The patient's own words; defaults to what they last said. */
-    text?: string
-  }): Promise<SendOutcome> {
-    return this.#track(this.#callMyNurse(input))
+  callMyNurse(
+    input: {
+      reason: string
+      clinical: boolean
+      /** The patient's own words; defaults to what they last said. */
+      text?: string
+    },
+    turnId?: string,
+  ): Promise<SendOutcome> {
+    this.#turnStarted(turnId)
+    return this.#track(this.#callMyNurse(input, turnId))
   }
 
-  async #callMyNurse(input: { reason: string; clinical: boolean; text?: string }) {
+  async #callMyNurse(input: { reason: string; clinical: boolean; text?: string }, turnId?: string) {
     const language = this.messageLanguage
     const reason = oneLine(input.reason, 140) || 'Patient asked for the nurse'
     const decision: RouteResult = {
@@ -322,11 +343,11 @@ export class BellTools {
     const label = `the nurse (${oneLine(reason, 60)})`
     const saved = await this.#post(input.text?.trim() || this.#lastPatientText || reason, decision)
     if (!saved.ok) {
-      this.#queue({ kind: 'failed', label, language })
+      this.#queue({ kind: 'failed', label, language }, turnId)
       return { outcome: 'failed' } as const
     }
     if (saved.requestId) this.#sent.push({ id: saved.requestId, label, language, seq: ++this.#seq })
-    this.#queue({ kind: 'nurse', label, language, requestId: saved.requestId })
+    this.#queue({ kind: 'nurse', label, language, requestId: saved.requestId }, turnId)
     return { outcome: 'sent', requestId: saved.requestId, nurse: true } as const
   }
 
@@ -374,6 +395,8 @@ export class BellTools {
     if (this.#batchTimer !== undefined) clearTimeout(this.#batchTimer)
     this.#batchTimer = undefined
     this.#batch = []
+    for (const turn of this.#turns.values()) if (turn.cap !== undefined) clearTimeout(turn.cap)
+    this.#turns.clear()
   }
 
   async #post(text: string, decision: RouteResult) {
@@ -395,28 +418,61 @@ export class BellTools {
     return promise
   }
 
-  /** Queues a result; results that land within the debounce window are announced together. */
-  #queue(result: AnnouncedResult): void {
+  /** Registers one more save for this reply, so its confirmation waits for it. */
+  #turnStarted(turnId: string | undefined): void {
+    if (!turnId) return
+    const turn = this.#turns.get(turnId)
+    if (turn) turn.started += 1
+    else this.#turns.set(turnId, { started: 1, results: [] })
+  }
+
+  /**
+   * Queues a result. Results from the same LLM reply (turnId) are announced once, after every save
+   * that reply started has settled (capped at TURN_ANNOUNCE_CAP_MS), so one sentence with two
+   * needs is one "Both sent." however far apart the saves land. Without a turn id (or for a
+   * straggler after its turn was already announced), results within the debounce window are
+   * announced together.
+   */
+  #queue(result: AnnouncedResult, turnId?: string): void {
+    const turn = turnId ? this.#turns.get(turnId) : undefined
+    if (turnId && turn) {
+      turn.results.push(result)
+      if (turn.results.length >= turn.started) {
+        if (turn.cap !== undefined) clearTimeout(turn.cap)
+        this.#turns.delete(turnId)
+        this.#flush(turn.results)
+      } else if (turn.cap === undefined) {
+        turn.cap = setTimeout(() => {
+          this.#turns.delete(turnId)
+          this.#flush(turn.results)
+        }, TURN_ANNOUNCE_CAP_MS)
+      }
+      return
+    }
     this.#batch.push(result)
     if (this.#batchTimer !== undefined) clearTimeout(this.#batchTimer)
     this.#batchTimer = setTimeout(() => {
       this.#batchTimer = undefined
       const batch = this.#batch
       this.#batch = []
-      const announcement = composeAnnouncement(batch)
-      if (!announcement) return
-      // Kurt's line, once per session, after the first plain "sent" confirmation.
-      const plainSend =
-        batch.some((r) => r.kind === 'sent') && batch.every((r) => r.kind === 'sent')
-      if (plainSend && !this.#changeHintGiven) {
-        this.#changeHintGiven = true
-        announcement.followUp = patientMessage(
-          'change_hint',
-          batch.at(-1)?.language ?? this.messageLanguage,
-        )
-      }
-      this.#announce(announcement)
+      this.#flush(batch)
     }, this.#debounceMs)
+  }
+
+  /** Speaks one line for a batch of results, plus Kurt's change hint once per session. */
+  #flush(batch: AnnouncedResult[]): void {
+    const announcement = composeAnnouncement(batch)
+    if (!announcement) return
+    // Kurt's line, once per session, after the first plain "sent" confirmation.
+    const plainSend = batch.some((r) => r.kind === 'sent') && batch.every((r) => r.kind === 'sent')
+    if (plainSend && !this.#changeHintGiven) {
+      this.#changeHintGiven = true
+      announcement.followUp = patientMessage(
+        'change_hint',
+        batch.at(-1)?.language ?? this.messageLanguage,
+      )
+    }
+    this.#announce(announcement)
   }
 }
 
