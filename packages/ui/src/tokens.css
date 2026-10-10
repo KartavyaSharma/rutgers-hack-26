@@ -1,0 +1,152 @@
+/* Call Bell tokens. One set of names, three themes.
+   Set data-theme="linen" | "clay" | "night" on <html>. Linen is the default.
+   Fonts (Google Fonts): Atkinson Hyperlegible 400/700, Fraunces opsz 9..144 at 500/600, DM Serif Display 400. */
+
+:root,
+:root[data-theme="linen"] {
+  color-scheme: light;
+  --bg: #E9EDE6;
+  --surface: #F7F8F4;
+  --ink: #1E2B24;
+  --muted: #4E5B53;
+  --border: #CFD8CE;
+  --action: #2F5D46;
+  --action-strong: #1E3D2E;
+  --action-tint: #DCE6DC;
+  --action-ink: #2F5D46;
+  --on-action: #F7F8F4;
+  --nurse: #A6332A;
+  --nurse-tint: #F6E3DE;
+  --nurse-ink: #6E1F18;
+  --on-nurse: #FFFFFF;
+  --state-sent: #E4EAE2;
+  --state-sent-ink: #1E2B24;
+  --state-seen: #A8C2AF;
+  --state-seen-ink: #1E2B24;
+  --state-on-the-way: #3F6E55;
+  --state-on-the-way-ink: #FFFFFF;
+  --state-done: #1E3D2E;
+  --state-done-ink: #F7F8F4;
+  --focus: var(--ink);
+  --scrim: rgba(30, 43, 36, 0.42);
+  --shadow-raised: 0 1px 0 #1e2b2414;
+  --font-heading: Fraunces, Georgia, "Times New Roman", serif;
+  --heading-weight: 500;
+  --heading-weight-strong: 600;
+  --chip-radius: var(--radius-sm);
+}
+
+[data-theme="clay"] {
+  color-scheme: light;
+  --bg: #F2EDE6;
+  --surface: #FBF8F3;
+  --ink: #2B2622;
+  --muted: #6A5F55;
+  --border: #DDD3C7;
+  --action: #2B2622;
+  --action-strong: #A44A2C;
+  --action-tint: #F0DCD0;
+  --action-ink: #A44A2C;
+  --on-action: #FBF8F3;
+  --nurse: #8F1D1D;
+  --nurse-tint: #F5DCD6;
+  --nurse-ink: #6B1717;
+  --on-nurse: #FFFFFF;
+  --state-sent: #EEE6DC;
+  --state-sent-ink: #2B2622;
+  --state-seen: #CDB8A3;
+  --state-seen-ink: #2B2622;
+  --state-on-the-way: #76604F;
+  --state-on-the-way-ink: #FFFFFF;
+  --state-done: #2B2622;
+  --state-done-ink: #FBF8F3;
+  --focus: var(--ink);
+  --scrim: rgba(43, 38, 34, 0.45);
+  --shadow-raised: 0 1px 0 #2b262212;
+  --font-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
+  --heading-weight: 400;
+  --heading-weight-strong: 400;
+  --chip-radius: var(--radius-pill);
+}
+
+[data-theme="night"] {
+  color-scheme: dark;
+  --bg: #1A1512;
+  --surface: #26201B;
+  --ink: #E6DACB;
+  --muted: #B3A493;
+  --border: #3E352E;
+  --action: #7E3B24;
+  --action-strong: #A54D2F;
+  --action-tint: #3B2A21;
+  --action-ink: #E89B78;
+  --on-action: #F6EADD;
+  --nurse: #EE8A7C;
+  --nurse-tint: #3D1E1B;
+  --nurse-ink: #F6D2CA;
+  --on-nurse: #1A1512;
+  --state-sent: #332A24;
+  --state-sent-ink: #E6DACB;
+  --state-seen: #5E4D41;
+  --state-seen-ink: #F6EADD;
+  --state-on-the-way: #B88A6C;
+  --state-on-the-way-ink: #1A1512;
+  --state-done: #E6D5C2;
+  --state-done-ink: #1A1512;
+  --focus: var(--ink);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-raised: 0 0 0 1px #3e352e;
+  --font-heading: Fraunces, Georgia, "Times New Roman", serif;
+  --heading-weight: 500;
+  --heading-weight-strong: 600;
+  --chip-radius: var(--radius-sm);
+}
+
+:root {
+  --font-body: "Atkinson Hyperlegible", "Atkinson Hyperlegible Next", system-ui, sans-serif;
+
+  --text-caption: 18px;
+  --text-body: 20px;
+  --text-lead: 24px;
+  --text-title: 28px;
+  --text-heading: 34px;
+  --text-display: 40px;
+  --text-display-lg: 44px;
+  --text-display-xl: 48px;
+  --leading-tight: 1.1;
+  --leading-body: 1.35;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 14px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-7: 24px;
+  --space-8: 28px;
+  --space-9: 32px;
+  --space-10: 40px;
+
+  --radius-sm: 18px;
+  --radius-md: 26px;
+  --radius-lg: 32px;
+  --radius-xl: 36px;
+  --radius-pill: 999px;
+
+  --size-tap: 64px;
+  --size-tap-lg: 72px;
+  --size-tile: 112px;
+  --size-main: 188px;
+  --size-disc: 64px;
+  --size-disc-lg: 84px;
+  --size-disc-xl: 112px;
+
+  --focus-width: 4px;
+  --focus-gap: 3px;
+  --motion-duration: 160ms;
+  --motion-ease: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-duration: 0ms; }
+}

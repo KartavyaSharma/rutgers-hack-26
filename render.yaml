@@ -1,0 +1,66 @@
+# Render Blueprint. Web app + Postgres on the free plan.
+# The voice agent runs on LiveKit Cloud by default (see the commented worker below).
+services:
+  - type: web
+    name: bell-web
+    runtime: node
+    plan: free
+    region: ohio
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @bell/web build
+    startCommand: cd apps/web && node_modules/.bin/next start --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bell-db
+          property: connectionString
+      - key: AGENT_SHARED_SECRET
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+
+  # Optional: run the voice agent on Render instead of LiveKit Cloud.
+  # Background workers are not available on the free plan.
+  # - type: worker
+  #   name: bell-agent
+  #   runtime: node
+  #   plan: starter
+  #   region: ohio
+  #   buildCommand: corepack enable && pnpm install --frozen-lockfile
+  #   startCommand: cd apps/agent && node_modules/.bin/tsx src/main.ts start
+  #   envVars:
+  #     - key: APP_URL
+  #       sync: false
+  #     - key: AGENT_SHARED_SECRET
+  #       sync: false
+  #     - key: LIVEKIT_URL
+  #       sync: false
+  #     - key: LIVEKIT_API_KEY
+  #       sync: false
+  #     - key: LIVEKIT_API_SECRET
+  #       sync: false
+  #     - key: DEEPGRAM_API_KEY
+  #       sync: false
+  #     - key: CEREBRAS_API_KEY
+  #       sync: false
+  #     - key: ELEVEN_API_KEY
+  #       sync: false
+  #     - key: ELEVEN_VOICE_ID
+  #       sync: false
+  #     - key: ELEVEN_MODEL
+  #       value: eleven_v4_turbo
+
+databases:
+  - name: bell-db
+    plan: free
+    region: ohio
+    databaseName: bell
+    user: bell

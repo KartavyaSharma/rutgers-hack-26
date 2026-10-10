@@ -1,0 +1,95 @@
+/*
+ * Values the components need that are NOT IN THE DESIGN SYSTEM YET.
+ * Keep tokens.css a verbatim copy of the design system; anything extra lives here.
+ * Selectors mirror tokens.css so the same data-theme rules apply.
+ * theme.css imports this file, so apps don't need to import it themselves.
+ */
+
+/* Amber for long waits (WaitTimer). Not in the design system yet. */
+:root,
+:root[data-theme="linen"] {
+  --warn-tint: #f6e7c1; /* not in the design system yet */
+  --warn-ink: #6b4700; /* not in the design system yet: 6.8:1 on warn-tint, 7.8:1 on surface */
+}
+
+[data-theme="clay"] {
+  --warn-tint: #f5e4be; /* not in the design system yet */
+  --warn-ink: #6a4500; /* not in the design system yet: 6.8:1 on warn-tint, 8.0:1 on surface */
+}
+
+[data-theme="night"] {
+  --warn-tint: #3a2c12; /* not in the design system yet */
+  --warn-ink: #f2c46a; /* not in the design system yet: 8.3:1 on warn-tint, 9.9:1 on surface */
+}
+
+/* Motion for the voice and sheet states. Not in the design system yet.
+   Durations scale from --motion-duration, which the design system sets to 0ms
+   under prefers-reduced-motion; looping animations are also switched off in components. */
+:root {
+  --anim-listen: cb-listen 1.6s var(--motion-ease) infinite; /* not in the design system yet */
+  --anim-dot: cb-dot 1.2s ease-in-out infinite; /* not in the design system yet */
+  --anim-sheet-in: cb-sheet-in calc(var(--motion-duration) * 1.75) var(--motion-ease); /* not in the design system yet */
+  --anim-sheet-out: cb-sheet-out var(--motion-duration) ease-in; /* not in the design system yet */
+  --anim-fade-in: cb-fade-in calc(var(--motion-duration) * 1.75) var(--motion-ease); /* not in the design system yet */
+  --anim-fade-out: cb-fade-out var(--motion-duration) ease-in; /* not in the design system yet */
+}
+
+@keyframes cb-listen {
+  from {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes cb-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes cb-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes cb-sheet-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes cb-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cb-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

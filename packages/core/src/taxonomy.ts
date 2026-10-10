@@ -1,0 +1,506 @@
+// Plain data and types shared by web, agent and the router.
+// No Effect imports here: client components import this file via `@bell/core/taxonomy`.
+
+export const TEAMS = ['nurse', 'care_aide', 'housekeeping', 'facilities', 'food', 'it'] as const
+export type Team = (typeof TEAMS)[number]
+
+export const TEAM_LABELS: Record<Team, string> = {
+  nurse: 'Nurse',
+  care_aide: 'Care aide',
+  housekeeping: 'Housekeeping',
+  facilities: 'Facilities',
+  food: 'Food services',
+  it: 'IT help',
+}
+
+export const isTeam = (value: unknown): value is Team =>
+  typeof value === 'string' && (TEAMS as readonly string[]).includes(value)
+
+export const URGENCIES = ['urgent', 'soon', 'routine'] as const
+export type Urgency = (typeof URGENCIES)[number]
+
+export const URGENCY_LABELS: Record<Urgency, string> = {
+  urgent: 'Urgent',
+  soon: 'Soon',
+  routine: 'Routine',
+}
+
+/** What the router decides for a piece of free text (typed or spoken). */
+export interface RoutingDecision {
+  team: Team
+  /** Short machine-friendly label, e.g. "pain", "linen_change", "tv_remote". */
+  category: string
+  urgency: Urgency
+  clinical: boolean
+  /** 0..1 */
+  confidence: number
+  /** One line for staff screens, in English. */
+  staffSummary: string
+  /** Read-back for the patient in their language ("An extra pillow."), or "I've let your nurse know." when it went straight to the nurse. Never names a team. */
+  patientReply: string
+  /** BCP-47-ish language code of the patient's text, e.g. "en", "es". */
+  language: string
+}
+
+/** Why the router landed where it did. Everything except "model" means the nurse got it as a safety fallback. */
+export const ROUTE_REASONS = [
+  'model',
+  'red_flag',
+  'clinical',
+  'low_confidence',
+  'timeout',
+  'rate_limited',
+  'invalid_output',
+  'error',
+  'not_configured',
+  'empty_input',
+] as const
+export type RouteReason = (typeof ROUTE_REASONS)[number]
+
+/** Return type of the public routeText(). */
+export interface RouteResult extends RoutingDecision {
+  reason: RouteReason
+}
+
+export const REQUEST_STATUSES = ['sent', 'seen', 'on_the_way', 'done'] as const
+export type RequestStatus = (typeof REQUEST_STATUSES)[number]
+
+export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  sent: 'Sent',
+  seen: 'Seen',
+  on_the_way: 'On the way',
+  done: 'Done',
+}
+
+/** How a request was made: a fixed-destination button on the screen, the nurse button, typed text or voice. */
+export const REQUEST_SOURCES = ['tile', 'nurse_button', 'typed', 'voice'] as const
+export type RequestSource = (typeof REQUEST_SOURCES)[number]
+
+/** A stored request, as returned by the web API and pushed over SSE (dates are ISO strings). */
+export interface CallRequest {
+  id: string
+  roomId: string
+  team: Team
+  category: string
+  urgency: Urgency
+  clinical: boolean
+  source: RequestSource
+  /** The request option the patient tapped (source "tile"), else null. */
+  optionId: OptionId | null
+  /** Original typed or spoken text (null for buttons). */
+  text: string | null
+  staffSummary: string
+  patientReply: string | null
+  language: string | null
+  confidence: number | null
+  routeReason: RouteReason | null
+  status: RequestStatus
+  createdAt: string
+  updatedAt: string
+  seenAt: string | null
+  claimedAt: string | null
+  doneAt: string | null
+}
+
+/** Body for POST /api/requests from a tablet button (no auth). */
+export interface ButtonRequestInput {
+  roomId: string
+  source: 'tile' | 'nurse_button'
+  /** Required when source is "tile". */
+  optionId?: OptionId
+}
+
+/** Body for POST /api/requests from the voice agent (Authorization: Bearer AGENT_SHARED_SECRET). */
+export interface RoutedRequestInput {
+  roomId: string
+  source: 'voice'
+  text: string
+  decision: RouteResult
+}
+
+/** PATCH /api/requests/[id] */
+export const REQUEST_ACTIONS = ['seen', 'claim', 'done'] as const
+export type RequestAction = (typeof REQUEST_ACTIONS)[number]
+
+// ---------------------------------------------------------------------------
+// Drafts. Typed and spoken requests become a draft first: nothing is saved as a request until
+// the patient confirms (says yes, or taps Send). Drafts never auto-send.
+// Exception: red flags and anything the router marks clinical go to the nurse immediately
+// (see needsNurseNow), with no draft.
+// The patient side never names the team; the team stays in the data for the hospital side.
+// ---------------------------------------------------------------------------
+
+export const DRAFT_STATUSES = ['pending', 'confirmed', 'discarded'] as const
+export type DraftStatus = (typeof DRAFT_STATUSES)[number]
+
+export interface RequestDraft {
+  id: string
+  roomId: string
+  source: 'typed' | 'voice'
+  /** What the patient typed or said. */
+  text: string
+  /** Full routing decision (hospital side). The tablet must not show decision.team. */
+  decision: RouteResult
+  /** Read-back for the patient, in their language, e.g. "An extra pillow." Never names a team. */
+  patientText: string
+  status: DraftStatus
+  /** Set once confirmed. */
+  requestId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * The one place that decides, per route reason, whether a result goes to the nurse right away
+ * (true) or becomes a draft the patient confirms (false). Red flags, clinical and AI failures are
+ * immediate; low confidence becomes a nurse draft quoting the patient's words. not_configured
+ * (no API key, i.e. local dev) stays a draft so the confirm flow works without keys.
+ */
+export const IMMEDIATE_BY_REASON: Readonly<Record<RouteReason, boolean>> = {
+  model: false,
+  red_flag: true,
+  clinical: true,
+  low_confidence: false,
+  timeout: true,
+  rate_limited: true,
+  invalid_output: true,
+  error: true,
+  not_configured: false,
+  empty_input: false,
+}
+
+/** True when a routed result must reach the nurse right away, skipping the draft step. */
+export const needsNurseNow = (result: RouteResult): boolean =>
+  result.clinical || IMMEDIATE_BY_REASON[result.reason]
+
+/** POST /api/route response. `message` is what to show/say next, in the patient's language. */
+export type RouteResponse =
+  | { kind: 'draft'; draft: RequestDraft; message: string }
+  | { kind: 'sent'; request: CallRequest; message: string }
+
+/** Body for POST /api/drafts from the voice agent (Authorization: Bearer AGENT_SHARED_SECRET). */
+export interface DraftInput {
+  roomId: string
+  source: 'voice'
+  text: string
+  decision: RouteResult
+}
+
+/**
+ * LiveKit RPC method the tablet calls on the agent participant after the patient taps Send,
+ * so the agent stops waiting for a spoken yes. Payload: JSON `{ "draftId": "..." }`.
+ */
+export const DRAFT_CONFIRMED_RPC = 'bell.draft_confirmed'
+
+/** Events on GET /api/stream (SSE `data:` payload, JSON). Draft events only go to room subscribers. */
+export type StreamEvent =
+  | { type: 'request.created' | 'request.updated'; request: CallRequest }
+  | { type: 'draft.created' | 'draft.updated'; draft: RequestDraft }
+
+/** LiveKit agent name used for explicit dispatch from the token endpoint. */
+export const AGENT_NAME = 'bell-agent'
+
+// ---------------------------------------------------------------------------
+// Languages. Auto-detect is the default; a chosen language is one room setting that flows to
+// the speech-to-text hint (Deepgram Flux `languageHint`), the router's reply language and the
+// text-to-speech `language`. These are the 10 languages of Deepgram `flux-general-multi`.
+// ---------------------------------------------------------------------------
+
+export const LANGUAGES = [
+  { code: 'en', label: 'English', nativeLabel: 'English' },
+  { code: 'es', label: 'Spanish', nativeLabel: 'Español' },
+  { code: 'fr', label: 'French', nativeLabel: 'Français' },
+  { code: 'de', label: 'German', nativeLabel: 'Deutsch' },
+  { code: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी' },
+  { code: 'ru', label: 'Russian', nativeLabel: 'Русский' },
+  { code: 'pt', label: 'Portuguese', nativeLabel: 'Português' },
+  { code: 'ja', label: 'Japanese', nativeLabel: '日本語' },
+  { code: 'it', label: 'Italian', nativeLabel: 'Italiano' },
+  { code: 'nl', label: 'Dutch', nativeLabel: 'Nederlands' },
+] as const
+export type LanguageCode = (typeof LANGUAGES)[number]['code']
+
+export const isLanguageCode = (value: unknown): value is LanguageCode =>
+  typeof value === 'string' && LANGUAGES.some((l) => l.code === value)
+
+/** "auto" means detect from what the patient says or types. */
+export type LanguagePreference = LanguageCode | 'auto'
+
+export const isLanguagePreference = (value: unknown): value is LanguagePreference =>
+  value === 'auto' || isLanguageCode(value)
+
+// Display themes from the design system. Linen is the default.
+export const THEMES = ['linen', 'clay', 'night'] as const
+export type Theme = (typeof THEMES)[number]
+
+export const isTheme = (value: unknown): value is Theme =>
+  typeof value === 'string' && (THEMES as readonly string[]).includes(value)
+
+/**
+ * Per-room settings. The tablet keeps them (localStorage per room for now) and sends the
+ * language along with typed text and voice sessions. Night can be scheduled later.
+ */
+export interface RoomSettings {
+  language: LanguagePreference
+  theme: Theme
+}
+
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { language: 'auto', theme: 'linen' }
+
+/** Job metadata the web token endpoint attaches to the agent dispatch (JSON). */
+export interface AgentJobMetadata {
+  roomId: string
+  language: LanguagePreference
+}
+
+// ---------------------------------------------------------------------------
+// Home screen: up to 8 groups, each with up to 7 plain-word request options.
+// Options never call the AI: each one has a fixed destination team.
+// The screen can render groups (tap a group, then an option) or flat tiles (a group with a
+// single option sends it directly). PLACEHOLDER content built from the original 8 tiles; the
+// final list comes from the layout doc.
+// ---------------------------------------------------------------------------
+
+export interface RequestOption {
+  /** Globally unique across groups. */
+  id: string
+  label: string
+  team: Team
+  category: string
+  urgency: Urgency
+  staffSummary: string
+}
+
+export interface RequestGroup {
+  id: string
+  label: string
+  /** Secondary line under the label, if any. */
+  hint: string | null
+  /** 1..7 options. */
+  requests: readonly RequestOption[]
+}
+
+export const MAX_GROUPS = 8
+export const MAX_OPTIONS_PER_GROUP = 7
+
+const option = (
+  id: string,
+  label: string,
+  team: Team,
+  category: string,
+  urgency: Urgency,
+  staffSummary: string,
+) => ({ id, label, team, category, urgency, staffSummary }) as const satisfies RequestOption
+
+export const REQUEST_GROUPS = [
+  {
+    id: 'water_food',
+    label: 'Water & food',
+    hint: null,
+    requests: [
+      option('water', 'Water', 'care_aide', 'water', 'soon', 'Patient would like water'),
+      option(
+        'ice_chips',
+        'Ice chips',
+        'care_aide',
+        'water',
+        'soon',
+        'Patient would like ice chips',
+      ),
+      option(
+        'snack',
+        'Something to eat',
+        'care_aide',
+        'food',
+        'soon',
+        'Patient would like something to eat',
+      ),
+    ],
+  },
+  {
+    id: 'bathroom',
+    label: 'Bathroom help',
+    hint: null,
+    requests: [
+      option(
+        'bathroom_help',
+        'Help to the bathroom',
+        'care_aide',
+        'bathroom',
+        'soon',
+        'Patient needs help getting to the bathroom',
+      ),
+      option(
+        'bedpan',
+        'Bedpan or urinal',
+        'care_aide',
+        'bathroom',
+        'soon',
+        'Patient needs a bedpan or urinal',
+      ),
+    ],
+  },
+  {
+    id: 'comfort',
+    label: 'Comfort items',
+    hint: 'Blanket, pillow, socks',
+    requests: [
+      option(
+        'blanket',
+        'Blanket',
+        'care_aide',
+        'comfort_items',
+        'routine',
+        'Patient would like a blanket',
+      ),
+      option(
+        'pillow',
+        'Pillow',
+        'care_aide',
+        'comfort_items',
+        'routine',
+        'Patient would like a pillow',
+      ),
+      option('socks', 'Socks', 'care_aide', 'comfort_items', 'routine', 'Patient would like socks'),
+    ],
+  },
+  {
+    id: 'reposition',
+    label: 'Move or sit up',
+    hint: null,
+    requests: [
+      option(
+        'sit_up',
+        'Sit up',
+        'care_aide',
+        'reposition',
+        'soon',
+        'Patient needs help sitting up',
+      ),
+      option(
+        'move_in_bed',
+        'Move in bed',
+        'care_aide',
+        'reposition',
+        'soon',
+        'Patient needs help moving in bed',
+      ),
+    ],
+  },
+  {
+    id: 'beeping',
+    label: 'Something is beeping',
+    hint: null,
+    requests: [
+      option(
+        'beeping',
+        'Something is beeping',
+        'nurse',
+        'device_alarm',
+        'soon',
+        'A device in the room is beeping',
+      ),
+    ],
+  },
+  {
+    id: 'cleaning',
+    label: 'Cleaning',
+    hint: null,
+    requests: [
+      option(
+        'clean_room',
+        'Clean my room',
+        'housekeeping',
+        'cleaning',
+        'routine',
+        'Room needs cleaning',
+      ),
+      option(
+        'clean_bathroom',
+        'Clean the bathroom',
+        'housekeeping',
+        'cleaning',
+        'routine',
+        'Bathroom needs cleaning',
+      ),
+      option(
+        'empty_trash',
+        'Empty the trash',
+        'housekeeping',
+        'cleaning',
+        'routine',
+        'Trash needs emptying',
+      ),
+    ],
+  },
+  {
+    id: 'fix_something',
+    label: 'Fix something',
+    hint: 'TV, lights, Wi-Fi',
+    requests: [
+      option('fix_tv', 'TV', 'facilities', 'repair_tv', 'routine', 'TV needs fixing'),
+      option(
+        'fix_lights',
+        'Lights',
+        'facilities',
+        'repair_lights',
+        'routine',
+        'Lights need fixing',
+      ),
+      option('fix_wifi', 'Wi-Fi', 'facilities', 'repair_wifi', 'routine', 'Wi-Fi is not working'),
+    ],
+  },
+  {
+    id: 'ask_care_team',
+    label: 'Ask my care team',
+    hint: null,
+    requests: [
+      option(
+        'ask_care_team',
+        'Ask my care team',
+        'nurse',
+        'question',
+        'routine',
+        'Patient has a question for the care team',
+      ),
+    ],
+  },
+] as const satisfies readonly RequestGroup[]
+
+export type GroupId = (typeof REQUEST_GROUPS)[number]['id']
+export type OptionId = (typeof REQUEST_GROUPS)[number]['requests'][number]['id']
+
+/** Every option across all groups, in screen order. */
+export const REQUEST_OPTIONS: readonly (RequestOption & { id: OptionId; groupId: GroupId })[] =
+  REQUEST_GROUPS.flatMap((group) =>
+    group.requests.map((request) => ({ ...request, groupId: group.id })),
+  )
+
+export const OPTION_IDS: readonly OptionId[] = REQUEST_OPTIONS.map((o) => o.id)
+
+export const isOptionId = (value: unknown): value is OptionId =>
+  typeof value === 'string' && (OPTION_IDS as readonly string[]).includes(value)
+
+export const isGroupId = (value: unknown): value is GroupId =>
+  typeof value === 'string' && REQUEST_GROUPS.some((g) => g.id === value)
+
+export const optionById = (id: OptionId) => {
+  const found = REQUEST_OPTIONS.find((o) => o.id === id)
+  if (!found) throw new Error(`Unknown request option: ${id}`)
+  return found
+}
+
+export const groupById = (id: GroupId): RequestGroup => {
+  const found = REQUEST_GROUPS.find((g) => g.id === id)
+  if (!found) throw new Error(`Unknown request group: ${id}`)
+  return found
+}
+
+/** The "My nurse" button. Always the nurse, never the AI. */
+export const NURSE_BUTTON = {
+  label: 'My nurse',
+  team: 'nurse',
+  category: 'nurse_call',
+  urgency: 'soon',
+  staffSummary: 'Patient pressed the nurse button',
+} as const satisfies Omit<RequestOption, 'id'>

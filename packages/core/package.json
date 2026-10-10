@@ -1,0 +1,27 @@
+{
+  "name": "@bell/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./taxonomy": "./src/taxonomy.ts",
+    "./adapters": "./src/adapters/index.ts",
+    "./messages": "./src/messages.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@effect/ai-openai-compat": "4.0.2",
+    "effect": "4.0.2"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.2",
+    "@types/node": "^22.18.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}

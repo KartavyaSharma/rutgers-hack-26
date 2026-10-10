@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+
+onlyBuiltDependencies:
+  - "@biomejs/biome"
+  - esbuild
+  - sharp
+  - unrs-resolver
+
+# install script is a no-op (only suppresses node-gyp); we use STT turn detection, not local models
+ignoredBuiltDependencies:
+  - "@livekit/local-inference"

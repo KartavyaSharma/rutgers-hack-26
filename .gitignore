@@ -1,0 +1,18 @@
+node_modules/
+.next/
+dist/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# local database (PGlite fallback when DATABASE_URL is unset)
+.data/
+
+# env files: only the example is committed
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log

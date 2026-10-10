@@ -1,0 +1,26 @@
+{
+  "name": "@bell/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts dev",
+    "start": "tsx src/main.ts start",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'agent: no tests yet'"
+  },
+  "dependencies": {
+    "@bell/core": "workspace:*",
+    "@livekit/agents": "1.9.2",
+    "@livekit/agents-plugin-deepgram": "1.9.2",
+    "@livekit/agents-plugin-elevenlabs": "1.9.2",
+    "@livekit/rtc-node": "1.1.0",
+    "tsx": "4.23.15",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "6.0.3"
+  }
+}

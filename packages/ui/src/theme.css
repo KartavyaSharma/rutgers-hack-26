@@ -1,0 +1,149 @@
+/*
+ * Tailwind 4 mapping from utility names to the design-system variables in tokens.css
+ * (plus tokens-extra.css). No raw values here.
+ *
+ * `inline` makes every utility read the variable on the element itself, so a
+ * [data-theme] subtree gets its own colors, not only <html>.
+ */
+
+@import "./tokens-extra.css";
+
+/* Tokens that already use Tailwind's own names (--radius-sm, --text-body, --font-heading,
+   --leading-tight, --shadow-raised). `reference` registers the utilities without
+   re-declaring the variables, which would otherwise point at themselves; utilities
+   then read var(--radius-sm) etc. straight from tokens.css. Tailwind's default type
+   sizes and radii are cleared first. */
+@theme reference {
+  --text-*: initial;
+  --radius-*: initial;
+
+  --font-heading: var(--font-heading);
+  --font-body: var(--font-body);
+
+  --text-caption: var(--text-caption);
+  --text-body: var(--text-body);
+  --text-lead: var(--text-lead);
+  --text-title: var(--text-title);
+  --text-heading: var(--text-heading);
+  --text-display: var(--text-display);
+  --text-display-lg: var(--text-display-lg);
+  --text-display-xl: var(--text-display-xl);
+
+  --leading-tight: var(--leading-tight);
+  --leading-body: var(--leading-body);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-raised: var(--shadow-raised);
+}
+
+/* Everything that maps one name onto a different variable. */
+@theme inline {
+  /* Line heights for text-caption .. text-display-xl */
+  --text-caption--line-height: var(--leading-body);
+  --text-body--line-height: var(--leading-body);
+  --text-lead--line-height: var(--leading-body);
+  --text-title--line-height: var(--leading-tight);
+  --text-heading--line-height: var(--leading-tight);
+  --text-display--line-height: var(--leading-tight);
+  --text-display-lg--line-height: var(--leading-tight);
+  --text-display-xl--line-height: var(--leading-tight);
+
+  /* Aliases so text-xs .. text-5xl land on the design-system scale (never below 18px). */
+  --text-xs: var(--text-caption);
+  --text-xs--line-height: var(--leading-body);
+  --text-sm: var(--text-caption);
+  --text-sm--line-height: var(--leading-body);
+  --text-base: var(--text-body);
+  --text-base--line-height: var(--leading-body);
+  --text-lg: var(--text-lead);
+  --text-lg--line-height: var(--leading-body);
+  --text-xl: var(--text-title);
+  --text-xl--line-height: var(--leading-tight);
+  --text-2xl: var(--text-heading);
+  --text-2xl--line-height: var(--leading-tight);
+  --text-3xl: var(--text-display);
+  --text-3xl--line-height: var(--leading-tight);
+  --text-4xl: var(--text-display-lg);
+  --text-4xl--line-height: var(--leading-tight);
+  --text-5xl: var(--text-display-xl);
+  --text-5xl--line-height: var(--leading-tight);
+
+  /* rounded-chip: pill in clay, radius-sm elsewhere */
+  --radius-chip: var(--chip-radius);
+
+  /* Sizes: min-h-tap, size-tap, h-tap-lg, min-h-tile, size-main, size-disc .. size-disc-xl */
+  --spacing-tap: var(--size-tap);
+  --spacing-tap-lg: var(--size-tap-lg);
+  --spacing-tile: var(--size-tile);
+  --spacing-main: var(--size-main);
+  --spacing-disc: var(--size-disc);
+  --spacing-disc-lg: var(--size-disc-lg);
+  --spacing-disc-xl: var(--size-disc-xl);
+
+  /* Design-system spacing as named steps (p-space-4, gap-space-7 ...). Tailwind's numeric
+     spacing (p-4 = 16px) is left as is. */
+  --spacing-space-1: var(--space-1);
+  --spacing-space-2: var(--space-2);
+  --spacing-space-3: var(--space-3);
+  --spacing-space-4: var(--space-4);
+  --spacing-space-5: var(--space-5);
+  --spacing-space-6: var(--space-6);
+  --spacing-space-7: var(--space-7);
+  --spacing-space-8: var(--space-8);
+  --spacing-space-9: var(--space-9);
+  --spacing-space-10: var(--space-10);
+
+  /* Motion (tokens-extra.css) */
+  --animate-listen: var(--anim-listen);
+  --animate-dot: var(--anim-dot);
+  --animate-sheet-in: var(--anim-sheet-in);
+  --animate-sheet-out: var(--anim-sheet-out);
+  --animate-fade-in: var(--anim-fade-in);
+  --animate-fade-out: var(--anim-fade-out);
+}
+
+/* Colors: bg-bg, bg-surface, text-ink, text-muted, border-border, bg-action, text-on-action,
+   text-action-ink, bg-nurse, bg-nurse-tint, text-nurse-ink, bg-state-seen ...
+   These are also emitted as --color-* for plain CSS. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  /* Alias: the design system has no strong border; muted is >= 4.5:1 on surface in every theme. */
+  --color-border-strong: var(--muted);
+
+  --color-action: var(--action);
+  --color-action-strong: var(--action-strong);
+  --color-action-tint: var(--action-tint);
+  --color-action-ink: var(--action-ink);
+  --color-on-action: var(--on-action);
+
+  /* Reserved for the nurse call and urgent items. */
+  --color-nurse: var(--nurse);
+  --color-nurse-tint: var(--nurse-tint);
+  --color-nurse-ink: var(--nurse-ink);
+  --color-on-nurse: var(--on-nurse);
+
+  --color-state-sent: var(--state-sent);
+  --color-state-sent-ink: var(--state-sent-ink);
+  --color-state-seen: var(--state-seen);
+  --color-state-seen-ink: var(--state-seen-ink);
+  --color-state-on-the-way: var(--state-on-the-way);
+  --color-state-on-the-way-ink: var(--state-on-the-way-ink);
+  --color-state-done: var(--state-done);
+  --color-state-done-ink: var(--state-done-ink);
+
+  /* tokens-extra.css */
+  --color-warn-tint: var(--warn-tint);
+  --color-warn-ink: var(--warn-ink);
+
+  --color-focus: var(--focus);
+  --color-scrim: var(--scrim);
+}

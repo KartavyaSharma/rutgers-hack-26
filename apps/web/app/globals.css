@@ -1,0 +1,30 @@
+@import "tailwindcss";
+@import "@bell/ui/tokens.css";
+@import "@bell/ui/fonts.css";
+@import "@bell/ui/theme.css";
+@source "../../../packages/ui/src";
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bg font-body text-body text-ink antialiased;
+    min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-heading;
+    font-weight: var(--heading-weight, 500);
+    text-wrap: balance;
+  }
+
+  :focus-visible {
+    outline: var(--focus-width, 3px) solid var(--color-focus);
+    outline-offset: var(--focus-offset, 3px);
+  }
+}
