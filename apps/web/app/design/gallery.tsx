@@ -9,21 +9,22 @@ import {
   type ButtonVariant,
   type ConversationItem,
   ConversationPanel,
+  Dialog,
+  DialogClose,
   EmergencyScreen,
   type EmergencyVoiceState,
   HelpButton,
   ICON_NAMES,
   Icon,
-  LanguageOptions,
   LanguagePicker,
   type MyRequestItem,
   MyRequestsSheet,
   RequestCard,
   RequestPanel,
   type RequestPanelState,
+  RequestSentCard,
   RoomControls,
-  SentDialog,
-  type SentItem,
+  type SentCardItem,
   Sheet,
   STEP_LABELS,
   type StepStatus,
@@ -33,12 +34,12 @@ import {
 } from '@bell/ui'
 import { type ReactNode, useState } from 'react'
 import {
-  AUTO_OPTION,
+  allSetTitle,
   CHOOSE_LANGUAGE_SUBTITLE,
   continueLabel,
-  LANGUAGE_GRID_OPTIONS,
   LANGUAGE_OPTIONS,
   languageDir,
+  MOST_USED_OPTIONS,
 } from '@/lib/client/patient-text'
 
 const THEMES = [
@@ -286,6 +287,17 @@ function ThemePanel({ theme }: { theme: (typeof THEMES)[number] }) {
         </div>
       </Block>
 
+      <Block
+        title="RequestSentCard"
+        note="In the Make a request panel after a spoken request: the edge drains over 10 s, then it closes as if Looks good was tapped"
+      >
+        <div className="grid grid-cols-3 gap-4">
+          {SENT_CARDS.map((card) => (
+            <SentCardDemo key={card.note} card={card} />
+          ))}
+        </div>
+      </Block>
+
       <Block title="RequestPanel" note="idle, connecting, listening, unavailable (no voice keys)">
         <div className="grid grid-cols-2 gap-4">
           {PANEL_STATES.map((state) => (
@@ -335,11 +347,10 @@ function ThemePanel({ theme }: { theme: (typeof THEMES)[number] }) {
         <RoomControlsDemo />
       </Block>
 
-      <Block title="LanguageOptions" note="The Language sheet's grid">
-        <LanguageDemo />
-      </Block>
-
-      <Block title="LanguagePicker" note="First run, full screen (shown in a 1024×768 frame)">
+      <Block
+        title="LanguagePicker"
+        note="First run and the Language button: search, Most used, then A to Z (shown in a 1024×768 frame)"
+      >
         <Frame>
           <PickerDemo />
         </Frame>
@@ -376,61 +387,83 @@ function Frame({ children }: { children: ReactNode }) {
   )
 }
 
-const SENT_STATES = {
-  'sent-one': {
-    label: 'Request sent',
-    heard: 'Can I get another pillow please',
-    items: [{ id: '1', label: 'Another pillow', icon: 'comfort' }],
+const SENT_CARDS: { note: string; listening: boolean; items: SentCardItem[] }[] = [
+  {
+    note: 'One request, still listening',
+    listening: true,
+    items: [{ id: '1', label: 'Extra pillow', icon: 'comfort' }],
   },
-  'sent-nurse': {
-    label: 'Your nurse has been told',
-    items: [{ id: '1', label: '“My chest hurts”', icon: 'question', nurse: true }],
-  },
-  'sent-two': {
-    label: 'Both sent',
-    heard: 'Can someone clean up a spill, and could I have some water',
+  {
+    note: 'Two from one sentence',
+    listening: true,
     items: [
       { id: '1', label: 'Clean up a spill', icon: 'cleaning' },
       { id: '2', label: 'Some water', icon: 'water' },
     ],
   },
-  'sent-three': {
-    label: 'All sent',
+  {
+    note: 'Three, after the session ended',
+    listening: false,
     items: [
       { id: '1', label: 'Clean up a spill', icon: 'cleaning' },
       { id: '2', label: 'Some water', icon: 'water' },
       { id: '3', label: 'Help sitting up', icon: 'move' },
     ],
   },
-  'sent-two-nurse': {
-    label: 'Both sent, one to the nurse',
-    items: [
-      { id: '1', label: 'Some water', icon: 'water' },
-      { id: '2', label: '“My chest hurts”', icon: 'question', nurse: true },
-    ],
-  },
-} as const satisfies Record<string, { label: string; heard?: string; items: readonly SentItem[] }>
+]
 
-type SentState = keyof typeof SENT_STATES
+/** The Request sent card restarts its 10 s timer whenever "Replay" is pressed. */
+function SentCardDemo({ card }: { card: (typeof SENT_CARDS)[number] }) {
+  const [key, setKey] = useState(0)
+  const [closed, setClosed] = useState(false)
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-body text-muted">{card.note}</p>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setClosed(false)
+            setKey((k) => k + 1)
+          }}
+        >
+          Replay
+        </Button>
+      </div>
+      <div className="h-[600px]">
+        {closed ? (
+          <p className="flex h-full items-center justify-center rounded-lg border-2 border-dashed border-border text-lead text-muted">
+            Closed (Looks good, Delete, or the timer ran out)
+          </p>
+        ) : (
+          <RequestSentCard
+            className="h-full"
+            items={card.items}
+            listening={card.listening}
+            resetKey={key}
+            onDone={() => setClosed(true)}
+            onDelete={() => setClosed(true)}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
 
 function OverlayDemos({ container }: { container: HTMLElement | null }) {
   const [open, setOpen] = useState<
-    SentState | 'language' | 'room' | 'requests' | 'requests-empty' | null
+    'nurse' | 'all-set' | 'room' | 'requests' | 'requests-empty' | null
   >(null)
-  const [language, setLanguage] = useState('en')
   const close = (isOpen: boolean) => {
     if (!isOpen) setOpen(null)
   }
-  const sent = open && open in SENT_STATES ? SENT_STATES[open as SentState] : null
   return (
     <div className="flex flex-wrap gap-3">
-      {(Object.keys(SENT_STATES) as SentState[]).map((key) => (
-        <Button key={key} variant="secondary" onClick={() => setOpen(key)}>
-          {SENT_STATES[key].label}
-        </Button>
-      ))}
-      <Button variant="secondary" onClick={() => setOpen('language')}>
-        Language sheet
+      <Button variant="secondary" onClick={() => setOpen('nurse')}>
+        Your nurse has been told
+      </Button>
+      <Button variant="secondary" onClick={() => setOpen('all-set')}>
+        You're all set
       </Button>
       <Button variant="secondary" onClick={() => setOpen('room')}>
         Your room sheet
@@ -442,22 +475,40 @@ function OverlayDemos({ container }: { container: HTMLElement | null }) {
         My requests, empty
       </Button>
 
-      <SentDialog
-        open={sent !== null}
+      <Dialog
+        open={open === 'nurse'}
         onOpenChange={close}
         container={container}
-        items={sent?.items ?? []}
-        {...(sent && 'heard' in sent ? { heard: sent.heard } : {})}
-        onFollow={() => setOpen('requests')}
+        tone="nurse"
+        title="Your nurse has been told"
+        body="They can see your call now. If you feel worse, press the red button on your bed rail."
+        actions={
+          <DialogClose asChild>
+            <Button variant="nurse" size="lg">
+              Okay
+            </Button>
+          </DialogClose>
+        }
       />
-      <Sheet open={open === 'language'} onOpenChange={close} container={container} title="Language">
-        <LanguageOptions
-          options={LANGUAGE_OPTIONS}
-          value={language}
-          onChange={setLanguage}
-          columns={3}
-        />
-      </Sheet>
+      <Dialog
+        open={open === 'all-set'}
+        onOpenChange={close}
+        container={container}
+        title={allSetTitle('es')}
+        body="You can change this any time with the Language button."
+        actions={
+          <>
+            <DialogClose asChild>
+              <Button size="lg">Okay</Button>
+            </DialogClose>
+            <DialogClose asChild>
+              <Button variant="secondary" size="lg">
+                Back
+              </Button>
+            </DialogClose>
+          </>
+        }
+      />
       <Sheet open={open === 'room'} onOpenChange={close} container={container} title="Your room">
         <RoomControlsDemo />
       </Sheet>
@@ -493,22 +544,13 @@ function RoomControlsDemo() {
   )
 }
 
-function LanguageDemo() {
-  const [value, setValue] = useState('auto')
-  return (
-    <div className="max-w-[860px]">
-      <LanguageOptions options={LANGUAGE_OPTIONS} value={value} onChange={setValue} columns={3} />
-    </div>
-  )
-}
-
 function PickerDemo() {
   const [value, setValue] = useState('es')
   const language = isLanguagePreference(value) ? value : 'auto'
   return (
     <LanguagePicker
-      options={LANGUAGE_GRID_OPTIONS}
-      autoOption={AUTO_OPTION}
+      options={LANGUAGE_OPTIONS}
+      mostUsed={MOST_USED_OPTIONS}
       value={value}
       onChange={setValue}
       onContinue={() => {}}

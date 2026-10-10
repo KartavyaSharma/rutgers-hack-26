@@ -103,7 +103,7 @@ const BLANKET = {
 }
 
 describe('sendRequest', () => {
-  it('classifies, sends right away, then announces the read-back and "sent"', async () => {
+  it('classifies, sends right away, then confirms "sent" (no read-back)', async () => {
     const classify = vi.fn<Classifier>(async () => routine())
     const tools = makeTools(classify)
 
@@ -132,6 +132,7 @@ describe('sendRequest', () => {
     expect(announced).toEqual([
       {
         say: patientMessage('sent', 'en'),
+        followUp: patientMessage('change_hint', 'en'),
         note: expect.stringContaining('Sent: "An extra blanket." (request req-1)'),
       },
     ])
@@ -250,6 +251,24 @@ describe('cancelRequest', () => {
     expect(tools.sentRequestIds).toEqual(['req-1'])
   })
 
+  it('a second "cancel that" never reaches back to an older request', async () => {
+    const tools = makeTools()
+    await tools.sendRequest(BLANKET) // req-1
+    await tools.sendRequest(BLANKET) // req-2
+
+    expect(await tools.cancelRequest('last', { change: true })).toMatchObject({
+      requestId: 'req-2',
+    })
+    expect(await tools.cancelRequest('last', { change: true })).toEqual({
+      outcome: 'nothing_to_cancel',
+    })
+    expect(tools.sentRequestIds).toEqual(['req-1'])
+
+    // a new request after the cancel is "the last one" again
+    await tools.sendRequest(BLANKET) // req-3
+    expect(await tools.cancelRequest()).toMatchObject({ requestId: 'req-3' })
+  })
+
   it('cancels a given request id', async () => {
     const tools = makeTools()
     await tools.sendRequest(BLANKET)
@@ -299,6 +318,68 @@ describe('cancelRequest', () => {
     expect(await tools.cancelRequest()).toEqual({ outcome: 'failed', requestId: 'req-1' })
     expect(announced).toEqual([{ note: expect.stringContaining('still active') }])
     expect(tools.sentRequestIds).toEqual(['req-1'])
+  })
+})
+
+describe('change hint, change by voice and tablet cancellations', () => {
+  it('adds the change hint once per session, after the first plain "sent"', async () => {
+    const tools = makeTools()
+    await tools.sendRequest(BLANKET)
+    await flush()
+    await tools.sendRequest(BLANKET)
+    await flush()
+
+    expect(announced[0]).toMatchObject({
+      say: patientMessage('sent', 'en'),
+      followUp: patientMessage('change_hint', 'en'),
+    })
+    expect(announced[1]?.say).toBe(patientMessage('sent', 'en'))
+    expect(announced[1]?.followUp).toBeUndefined()
+  })
+
+  it('does not add the hint to a nurse confirmation', async () => {
+    const tools = makeTools(async () =>
+      routine({ team: 'nurse', clinical: true, reason: 'clinical' }),
+    )
+    await tools.sendRequest(BLANKET)
+    await flush()
+    expect(announced[0]?.followUp).toBeUndefined()
+  })
+
+  it('stays quiet when cancelling to change a request (the LLM asked "what instead?")', async () => {
+    const tools = makeTools()
+    await tools.sendRequest(BLANKET)
+    await flush()
+    announced = []
+
+    expect(await tools.cancelRequest('last', { change: true })).toMatchObject({
+      outcome: 'cancelled',
+    })
+    expect(announced).toEqual([{ note: expect.stringContaining('so the patient can change it') }])
+  })
+
+  it('says "cancelled" when the tablet cancels requests', async () => {
+    const tools = makeTools()
+    await tools.sendRequest(BLANKET)
+    await flush()
+    announced = []
+
+    expect(tools.tabletCancelled(['req-1'])).toBe(true)
+    expect(announced).toEqual([
+      { say: patientMessage('cancelled', 'en'), note: expect.stringContaining('on the tablet') },
+    ])
+    expect(tools.sentRequestIds).toEqual([])
+  })
+
+  it('stays quiet when the tablet reports a cancellation the agent just made', async () => {
+    const tools = makeTools()
+    await tools.sendRequest(BLANKET)
+    await flush()
+    await tools.cancelRequest()
+    announced = []
+
+    expect(tools.tabletCancelled(['req-1'])).toBe(false)
+    expect(announced).toEqual([{ note: expect.stringContaining('on the tablet') }])
   })
 })
 

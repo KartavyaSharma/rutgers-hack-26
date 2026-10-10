@@ -538,7 +538,7 @@ describe('room language setting', () => {
 
   it.each([
     ['tl', 'Papunta na ang nars mo.'],
-    ['ht', 'Enfimyè w la ap vini.'],
+    ['he', 'האחות כבר בדרך.'],
     ['ar', 'ممرضتك في الطريق.'],
     ['ko', '간호사가 오고 있어요.'],
     ['vi', 'Y tá đang tới.'],

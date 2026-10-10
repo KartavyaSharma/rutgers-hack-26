@@ -47,8 +47,13 @@ export interface ToolLogger {
 /** Something to tell the patient (optional) and a note for the LLM's chat context. */
 export interface Announcement {
   say?: string
+  /** Said right after `say` (a separate fixed phrase, so both play from the phrase cache). */
+  followUp?: string
   note: string
 }
+
+/** A request the agent cancelled itself counts as "just cancelled" for this long. */
+const AGENT_CANCEL_WINDOW_MS = 15_000
 
 /** How long to wait for more results before announcing them together. */
 export const ANNOUNCE_DEBOUNCE_MS = 300
@@ -83,6 +88,8 @@ interface SentRequest {
   /** Short description for the LLM's notes. */
   label: string
   language: string
+  /** Order sent in this session, to tell "the last one" from requests before a cancel. */
+  seq: number
 }
 
 /** One result waiting to be announced. */
@@ -105,6 +112,13 @@ export class BellTools {
   readonly #announce: (announcement: Announcement) => void
   readonly #debounceMs: number
   readonly #sent: SentRequest[] = []
+  /** Requests the agent cancelled, with when, so the tablet's echo of them stays quiet. */
+  readonly #cancelledByAgent = new Map<string, number>()
+  /** The "want to change anything?" hint is said once per session, after the first "sent". */
+  #changeHintGiven = false
+  #seq = 0
+  /** `seq` at the agent's last cancel: "cancel the last one" never reaches back past it. */
+  #seqAtLastCancel = 0
   /** Sends still running, so cancel_request("last") can wait for the one just asked for. */
   readonly #running = new Set<Promise<unknown>>()
   #batch: AnnouncedResult[] = []
@@ -218,7 +232,7 @@ export class BellTools {
       return { outcome: 'failed' }
     }
     if (saved.requestId) {
-      this.#sent.push({ id: saved.requestId, label, language: decision.language })
+      this.#sent.push({ id: saved.requestId, label, language: decision.language, seq: ++this.#seq })
     }
     this.#queue({
       kind: nurse ? 'nurse' : 'sent',
@@ -233,7 +247,7 @@ export class BellTools {
    * cancel_request: cancels the most recent request this session sent ("last", waiting for any
    * send already running) or the given id. Announces "cancelled". Never rejects.
    */
-  async cancelRequest(which?: string): Promise<CancelOutcome> {
+  async cancelRequest(which?: string, options: { change?: boolean } = {}): Promise<CancelOutcome> {
     const byId = which && which !== 'last' ? which : undefined
     if (!byId && this.#running.size > 0) {
       // "No, cancel that" right after asking: the request may still be on its way.
@@ -244,8 +258,9 @@ export class BellTools {
           id: byId,
           label: 'that request',
           language: this.messageLanguage,
+          seq: 0,
         })
-      : this.#sent.at(-1)
+      : this.#latestSinceLastCancel()
     if (!target) {
       this.#announce({ note: `${NOTE_PREFIX} There was no request to cancel.` })
       return { outcome: 'nothing_to_cancel' }
@@ -262,11 +277,21 @@ export class BellTools {
     }
     const index = this.#sent.findIndex((r) => r.id === target.id)
     if (index >= 0) this.#sent.splice(index, 1)
-    this.#log.info({ requestId: target.id }, 'request cancelled')
-    this.#announce({
-      say: patientMessage('cancelled', target.language),
-      note: `${NOTE_PREFIX} Cancelled "${target.label}" (request ${target.id}). The patient was told.`,
-    })
+    this.#cancelledByAgent.set(target.id, Date.now())
+    this.#seqAtLastCancel = this.#seq
+    this.#log.info({ requestId: target.id, change: options.change === true }, 'request cancelled')
+    if (options.change) {
+      // A change: the LLM already said "Sure, what instead?" (or "Got it." with the new request),
+      // so "cancelled" would only get in the way.
+      this.#announce({
+        note: `${NOTE_PREFIX} Cancelled "${target.label}" (request ${target.id}) so the patient can change it.`,
+      })
+    } else {
+      this.#announce({
+        say: patientMessage('cancelled', target.language),
+        note: `${NOTE_PREFIX} Cancelled "${target.label}" (request ${target.id}). The patient was told.`,
+      })
+    }
     return { outcome: 'cancelled', requestId: target.id }
   }
 
@@ -300,9 +325,48 @@ export class BellTools {
       this.#queue({ kind: 'failed', label, language })
       return { outcome: 'failed' } as const
     }
-    if (saved.requestId) this.#sent.push({ id: saved.requestId, label, language })
+    if (saved.requestId) this.#sent.push({ id: saved.requestId, label, language, seq: ++this.#seq })
     this.#queue({ kind: 'nurse', label, language, requestId: saved.requestId })
     return { outcome: 'sent', requestId: saved.requestId, nurse: true } as const
+  }
+
+  /**
+   * The tablet's Delete button cancelled these requests. They are no longer cancellable by voice;
+   * the patient hears "cancelled" unless the agent itself cancelled them a moment ago. Returns
+   * whether anything was said.
+   */
+  tabletCancelled(requestIds: readonly string[]): boolean {
+    const now = Date.now()
+    const labels = requestIds.map((id) => {
+      const index = this.#sent.findIndex((r) => r.id === id)
+      const label = index >= 0 ? this.#sent[index]?.label : undefined
+      if (index >= 0) this.#sent.splice(index, 1)
+      return label ? `"${label}" (request ${id})` : `request ${id}`
+    })
+    const echo = requestIds.every(
+      (id) => now - (this.#cancelledByAgent.get(id) ?? 0) < AGENT_CANCEL_WINDOW_MS,
+    )
+    const note = `${NOTE_PREFIX} The patient cancelled ${labels.join(', ')} on the tablet.`
+    this.#log.info({ requestIds, echo }, 'requests cancelled on the tablet')
+    if (echo || requestIds.length === 0) {
+      this.#announce({ note })
+      return false
+    }
+    this.#announce({
+      say: patientMessage('cancelled', this.messageLanguage),
+      note: `${note} They heard "cancelled".`,
+    })
+    return true
+  }
+
+  /**
+   * The most recent request sent since the agent last cancelled one. A second "cancel that" (the
+   * model sometimes cancels again when the patient then says what instead) must not reach back
+   * and cancel an older, unrelated request.
+   */
+  #latestSinceLastCancel(): SentRequest | undefined {
+    const latest = this.#sent.at(-1)
+    return latest && latest.seq > this.#seqAtLastCancel ? latest : undefined
   }
 
   /** Drops anything still queued and stops the timer (session ending). */
@@ -340,7 +404,18 @@ export class BellTools {
       const batch = this.#batch
       this.#batch = []
       const announcement = composeAnnouncement(batch)
-      if (announcement) this.#announce(announcement)
+      if (!announcement) return
+      // Kurt's line, once per session, after the first plain "sent" confirmation.
+      const plainSend =
+        batch.some((r) => r.kind === 'sent') && batch.every((r) => r.kind === 'sent')
+      if (plainSend && !this.#changeHintGiven) {
+        this.#changeHintGiven = true
+        announcement.followUp = patientMessage(
+          'change_hint',
+          batch.at(-1)?.language ?? this.messageLanguage,
+        )
+      }
+      this.#announce(announcement)
     }, this.#debounceMs)
   }
 }

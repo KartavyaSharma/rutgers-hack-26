@@ -2,6 +2,7 @@ import { stt } from '@livekit/agents'
 import type { TranscriptionStreamPart } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 import { interruptionWords } from './interruptions'
+import { elevenLabsLanguage } from './languages'
 import {
   boardLanguage,
   isShortUtterance,
@@ -502,6 +503,13 @@ describe('resolveUtteranceLanguage', () => {
     })
   })
 
+  it('trusts MAI on a non-Latin script core cannot name (Thai), even when short', () => {
+    expect(resolveUtteranceLanguage({ text: 'ขอน้ำหน่อย', detected: 'th', last: 'en' })).toEqual({
+      language: 'th',
+      confident: true,
+    })
+  })
+
   it('measures short utterances in CJK characters or words', () => {
     expect(isShortUtterance('一杯水。')).toBe(true)
     expect(isShortUtterance('我需要一条毯子')).toBe(false)
@@ -516,19 +524,34 @@ describe('interruptionWords', () => {
     expect(interruptionWords(undefined)).toBe(2)
     expect(interruptionWords('zh')).toBe(0)
     expect(interruptionWords('ko-KR')).toBe(0)
+    expect(interruptionWords('th')).toBe(0)
   })
 })
 
 describe('language codes', () => {
-  it('maps room languages to MAI hints', () => {
+  it('maps room languages to MAI hints, only for verified codes', () => {
     expect(maiLanguageHint('auto')).toBeUndefined()
     expect(maiLanguageHint('es')).toBe('es')
+    expect(maiLanguageHint('th')).toBe('th')
     expect(maiLanguageHint('tl')).toBe('fil')
+    expect(maiLanguageHint('no')).toBe('nb')
     expect(maiLanguageHint('ht')).toBeUndefined()
+    expect(maiLanguageHint('xx')).toBeUndefined()
+  })
+
+  it('passes ElevenLabs only the language codes it accepts', () => {
+    expect(elevenLabsLanguage('auto')).toBeUndefined()
+    expect(elevenLabsLanguage('ko')).toBe('ko')
+    expect(elevenLabsLanguage('no')).toBe('no')
+    expect(elevenLabsLanguage('tl')).toBe('fil')
+    expect(elevenLabsLanguage('ht')).toBeUndefined()
+    expect(elevenLabsLanguage('xx')).toBeUndefined()
   })
 
   it('maps MAI languages to board codes', () => {
     expect(boardLanguage('fil')).toBe('tl')
+    expect(boardLanguage('nb')).toBe('no')
+    expect(boardLanguage('iw')).toBe('he')
     expect(boardLanguage('zh-CN')).toBe('zh')
     expect(boardLanguage(undefined)).toBeUndefined()
   })

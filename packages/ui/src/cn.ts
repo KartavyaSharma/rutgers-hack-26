@@ -48,7 +48,7 @@ const twMerge = extendTailwindMerge({
         'space-11',
         'space-12',
       ],
-      animate: ['ripple', 'ripple-soft'],
+      animate: ['ripple', 'ripple-soft', 'drain'],
     },
   },
 })

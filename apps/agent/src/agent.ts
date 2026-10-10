@@ -22,6 +22,7 @@ import {
   LANGUAGES,
   type LanguagePreference,
   patientMessage,
+  REQUESTS_CANCELLED_RPC,
 } from '@bell/core'
 import {
   type ChatContext,
@@ -39,6 +40,7 @@ import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node'
 import { z } from 'zod'
 import { type AgentEnv, agentEnv, loadRootEnv } from './env'
 import { interruptionWords, MIN_INTERRUPTION_MS, MIN_INTERRUPTION_WORDS } from './interruptions'
+import { elevenLabsLanguage } from './languages'
 import {
   ConversationLLM,
   chatStream,
@@ -107,11 +109,12 @@ async function addToChat(agent: voice.Agent, contents: string[]): Promise<void> 
 async function announce(
   session: voice.AgentSession,
   phrases: PhraseCache,
-  { say, note }: Announcement,
+  { say, followUp, note }: Announcement,
 ): Promise<void> {
   try {
     await addToChat(session.currentAgent, [note])
     if (say) phrases.say(session, say)
+    if (followUp) phrases.say(session, followUp)
   } catch (error) {
     // the session is closing
     log().warn({ error: describeError(error) }, 'could not announce')
@@ -285,18 +288,22 @@ function buildTools(bell: BellTools) {
     }),
     cancel_request: llm.tool({
       description:
-        'Cancel a request this conversation sent: the most recent one by default. For a correction, ' +
-        'call this first, then send_request with the corrected request. Say a short phrase like ' +
-        '"Okay." in the same reply.',
+        'Cancel a request this conversation sent: the most recent one by default. To change a ' +
+        'request, call this with change: true (and send_request with the new one if they already ' +
+        'said it). Say only "Okay." (cancel) or "Sure, what instead?" (change) in the same reply.',
       parameters: z.object({
         which: z
           .string()
           .optional()
           .describe(`"last" (the default) or a request id from a ${NOTE_PREFIX} note.`),
+        change: z
+          .boolean()
+          .optional()
+          .describe('true when the patient wants to change it to something else, not just cancel.'),
       }),
-      execute: async ({ which }, { ctx }) => {
+      execute: async ({ which, change }, { ctx }) => {
         toolStarted(ctx.session)
-        void bell.cancelRequest(which)
+        void bell.cancelRequest(which, { change: change === true })
         return undefined
       },
     }),
@@ -410,6 +417,25 @@ export function resolveJob(metadata: string, roomName: string | undefined): JobI
   }
 }
 
+/** REQUESTS_CANCELLED_RPC payload: JSON `{ "requestIds": ["..."] }`. */
+export function parseRequestIds(payload: string): string[] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(payload)
+    if (typeof parsed === 'object' && parsed !== null && 'requestIds' in parsed) {
+      const { requestIds } = parsed
+      if (Array.isArray(requestIds)) {
+        return requestIds
+          .filter((id): id is string => typeof id === 'string')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+      }
+    }
+  } catch {
+    // not JSON
+  }
+  return undefined
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
 }
@@ -443,15 +469,6 @@ function speechToText(env: AgentEnv, language: LanguagePreference, onLost: () =>
     apiKey: env.stt.deepgramApiKey,
     ...(fluxHint ? { languageHint: [language] } : {}),
   })
-}
-
-/**
- * The ElevenLabs language code for a room language, or undefined to follow the text. Checked
- * against eleven_v4_turbo: it wants "fil" for Tagalog and has no Haitian Creole ("ht" is a 400).
- */
-export function elevenLabsLanguage(language: LanguagePreference): string | undefined {
-  if (language === 'auto' || language === 'ht') return undefined
-  return language === 'tl' ? 'fil' : language
 }
 
 /** For a room on auto: which language the STT heard, so the LLM replies in it. */
@@ -515,6 +532,7 @@ function fixedPhrases(language: string, mode: 'request' | 'emergency'): string[]
       'sent',
       'sent_two',
       'sent_many',
+      'change_hint',
       'cancelled',
       'nurse_notified',
       'save_failed',
@@ -602,6 +620,19 @@ export default defineAgent({
       }
     })
     session.on(voice.AgentSessionEventTypes.Close, () => bell.close())
+
+    // The tablet's Delete button (in-panel card): { requestIds }. Connect first so it is ready.
+    await ctx.connect()
+    const local = ctx.room.localParticipant
+    if (local) {
+      local.registerRpcMethod(REQUESTS_CANCELLED_RPC, async (data) => {
+        const requestIds = parseRequestIds(data.payload)
+        if (!requestIds) return 'invalid'
+        return bell.tabletCancelled(requestIds) ? 'ok' : 'noted'
+      })
+    } else {
+      logger.error('no local participant after connect; tablet cancellations will be missed')
+    }
 
     await session.start({
       agent: new BellAgent(job.language, bell, phrases, {

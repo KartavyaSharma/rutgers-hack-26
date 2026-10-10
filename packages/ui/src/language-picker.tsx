@@ -1,118 +1,123 @@
-import { useId } from 'react'
+'use client'
+
+import { useId, useState } from 'react'
 import { Button } from './button'
 import { cn, focusRing, pressable } from './cn'
 import { Icon } from './icon'
 
 export interface LanguageOption {
   value: string
-  /** The language's own name, e.g. "Español". */
-  label: string
-  /** The English name, e.g. "Spanish". */
-  sublabel?: string
-  /** BCP-47 code for the label's text, so screen readers pronounce it right. */
+  /** The English name, shown bold, e.g. "Spanish". */
+  name: string
+  /** The language's own name, under it, e.g. "Español". */
+  nativeName: string
+  /** BCP-47 code of the native name, so screen readers pronounce it right. */
   lang?: string
-  /** Text direction of the label: "rtl" for Arabic. */
+  /** Text direction of the native name: "rtl" for Arabic, Hebrew, Persian, Urdu. */
   dir?: 'ltr' | 'rtl'
 }
 
-export interface LanguageOptionsProps {
-  options: readonly LanguageOption[]
-  value: string
-  onChange: (value: string) => void
-  /** 2 for the Language sheet, 3 for the first-run screen. */
-  columns?: 2 | 3
-  /** Stretch the grid rows to fill the height (first-run screen). */
-  fill?: boolean
-  className?: string
-  'aria-label'?: string
+const fold = (text: string) => text.toLocaleLowerCase()
+
+/** Prefix match on the English or the native name, as on the board. */
+const matches = (option: LanguageOption, query: string) =>
+  fold(option.name).startsWith(query) || fold(option.nativeName).startsWith(query)
+
+const byName = (a: LanguageOption, b: LanguageOption) => a.name.localeCompare(b.name)
+
+function LanguageTile({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: LanguageOption
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: big tiles in a grid, announced as radios
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={cn(
+        'flex min-h-[76px] items-center justify-between gap-2.5 rounded-sm border-[3px] px-5 py-1.5 text-left text-ink',
+        selected ? 'border-action-ink bg-action-tint' : 'border-transparent bg-surface',
+        pressable,
+        focusRing,
+      )}
+    >
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-label leading-tight font-bold">{option.name}</span>
+        <span lang={option.lang} dir={option.dir} className="truncate text-body text-muted">
+          {option.nativeName}
+        </span>
+      </span>
+      {selected ? (
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-action text-on-action">
+          <Icon name="check" className="size-5" strokeWidth={3} />
+          <span className="sr-only">Selected</span>
+        </span>
+      ) : null}
+    </button>
+  )
 }
 
-/** A grid of language buttons; one is selected (radio semantics). */
-export function LanguageOptions({
+const sectionHeading =
+  'col-span-full font-body text-body font-bold tracking-[0.06em] text-muted uppercase'
+
+function TileGroup({
+  label,
   options,
   value,
   onChange,
-  columns = 2,
-  fill = false,
-  className,
-  'aria-label': ariaLabel = 'Language',
-}: LanguageOptionsProps) {
+}: {
+  label: string
+  options: readonly LanguageOption[]
+  value: string
+  onChange: (value: string) => void
+}) {
   return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className={cn(
-        'grid gap-3',
-        columns === 3 ? 'grid-cols-3' : 'grid-cols-2',
-        fill && 'auto-rows-fr',
-        className,
-      )}
-    >
-      {options.map((option) => {
-        const selected = option.value === value
-        return (
-          // biome-ignore lint/a11y/useSemanticElements: a grid of big buttons, announced as radios
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(option.value)}
-            className={cn(
-              'flex min-h-tap-xl items-center justify-between gap-2.5 rounded-md border-[3px] px-5 py-2 text-left text-ink',
-              selected ? 'border-action-ink bg-action-tint' : 'border-transparent bg-surface',
-              pressable,
-              focusRing,
-            )}
-          >
-            <span className="flex flex-col gap-0.5">
-              <span
-                lang={option.lang}
-                dir={option.dir}
-                className="text-title leading-tight font-bold"
-              >
-                {option.label}
-              </span>
-              {option.sublabel ? (
-                <span className="text-body text-muted">{option.sublabel}</span>
-              ) : null}
-            </span>
-            {selected ? (
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-pill bg-action text-on-action">
-                <Icon name="check" className="size-[22px]" strokeWidth={3} />
-                <span className="sr-only">Selected</span>
-              </span>
-            ) : null}
-          </button>
-        )
-      })}
+    <div role="radiogroup" aria-label={label} className="col-span-full grid grid-cols-4 gap-2.5">
+      {options.map((option) => (
+        <LanguageTile
+          key={option.value}
+          option={option}
+          selected={option.value === value}
+          onSelect={() => onChange(option.value)}
+        />
+      ))}
     </div>
   )
 }
 
 export interface LanguagePickerProps {
-  /** The languages, shown as a 3 × 4 grid (the board's 12). */
+  /** Every language; shown A to Z by English name. */
   options: readonly LanguageOption[]
-  /** Optional "Auto (detect)" choice, shown beside Continue (value e.g. "auto"). */
-  autoOption?: LanguageOption
+  /** The "Most used" tiles, in order (e.g. Auto first). */
+  mostUsed: readonly LanguageOption[]
   value: string
   onChange: (value: string) => void
   onContinue: () => void
   /** Continue, in the chosen language. */
   continueLabel?: string
-  /** Language and direction of the Continue label (e.g. "ar" and "rtl"). */
+  /** Language and direction of the Continue label. */
   continueLang?: string
   continueDir?: 'ltr' | 'rtl'
   title?: string
-  /** "Choose your language" in a few other languages. */
+  /** "Choose your language" in other languages. */
   subtitle?: string
   className?: string
 }
 
-/** Full-screen first-run language choice. */
+/**
+ * The full-screen language screen (first run, and the header's Language button): a search box,
+ * "Most used", then every language A to Z as a 4-column grid, and Continue.
+ */
 export function LanguagePicker({
   options,
-  autoOption,
+  mostUsed,
   value,
   onChange,
   onContinue,
@@ -124,16 +129,23 @@ export function LanguagePicker({
   className,
 }: LanguagePickerProps) {
   const id = useId()
+  const [query, setQuery] = useState('')
+  const q = fold(query.trim())
+  const all = [...options].sort(byName)
+  // Search covers everything shown, including Most used entries that are not in `options` (Auto).
+  const searchable = [...mostUsed.filter((m) => !options.some((o) => o.value === m.value)), ...all]
+  const found = q ? searchable.filter((option) => matches(option, q)).sort(byName) : []
+
   return (
     <section
       aria-labelledby={`${id}-title`}
       className={cn(
-        'absolute inset-0 z-30 flex flex-col gap-5 bg-bg px-9 py-8 text-ink',
+        'absolute inset-0 z-30 flex flex-col gap-[18px] bg-bg px-9 py-7 text-ink',
         className,
       )}
     >
       <header className="flex items-center gap-5">
-        <span className="flex size-disc-lg shrink-0 items-center justify-center rounded-pill bg-action text-on-action">
+        <span className="flex size-[76px] shrink-0 items-center justify-center rounded-pill bg-action text-on-action">
           <Icon name="globe" className="size-10" />
         </span>
         <span className="flex flex-col gap-1.5">
@@ -143,45 +155,54 @@ export function LanguagePicker({
           {subtitle ? <span className="text-body text-muted">{subtitle}</span> : null}
         </span>
       </header>
-      <LanguageOptions
-        options={options}
-        value={value}
-        onChange={onChange}
-        columns={3}
-        fill
-        className="min-h-0 flex-1"
-      />
-      <div className="flex gap-3.5">
-        {autoOption ? (
-          <button
-            type="button"
-            aria-pressed={value === autoOption.value}
-            onClick={() => onChange(autoOption.value)}
-            className={cn(
-              'flex min-h-tap-xl flex-1 items-center justify-center gap-3 rounded-pill border-2 px-6 font-body text-lead font-bold text-ink',
-              value === autoOption.value
-                ? 'border-action-ink bg-action-tint'
-                : 'border-border bg-surface',
-              pressable,
-              focusRing,
-            )}
+
+      <label className="flex h-[76px] shrink-0 items-center gap-3.5 rounded-pill border-2 border-border bg-surface pr-2 pl-6 focus-within:border-action-ink">
+        <Icon name="search" className="size-7 text-muted" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search for your language"
+          aria-label="Search languages"
+          autoComplete="off"
+          className="min-w-0 flex-1 bg-transparent text-label text-ink outline-none placeholder:text-muted"
+        />
+        {query ? (
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => setQuery('')}
+            className="bg-action-tint text-action-ink"
           >
-            <Icon
-              name={value === autoOption.value ? 'check' : 'globe'}
-              className="size-7 text-action-ink"
-            />
-            {autoOption.label}
-            {autoOption.sublabel ? (
-              <span className="font-normal text-muted">· {autoOption.sublabel}</span>
-            ) : null}
-          </button>
+            Clear
+          </Button>
         ) : null}
-        <Button variant="primary" size="xl" onClick={onContinue} className="flex-1">
-          <span lang={continueLang} dir={continueDir}>
-            {continueLabel}
-          </span>
-        </Button>
+      </label>
+
+      <div className="grid min-h-0 flex-1 grid-cols-4 content-start gap-2.5 overflow-y-auto pr-1.5 [scrollbar-width:thin]">
+        {q ? (
+          found.length > 0 ? (
+            <TileGroup label="Languages" options={found} value={value} onChange={onChange} />
+          ) : (
+            <p className="col-span-full px-4 py-6 text-lead text-muted" role="status">
+              No match. Try saying it instead.
+            </p>
+          )
+        ) : (
+          <>
+            <h3 className={cn(sectionHeading, 'pt-1')}>Most used</h3>
+            <TileGroup label="Most used" options={mostUsed} value={value} onChange={onChange} />
+            <h3 className={cn(sectionHeading, 'pt-3.5')}>All languages, A to Z</h3>
+            <TileGroup label="All languages" options={all} value={value} onChange={onChange} />
+          </>
+        )}
       </div>
+
+      <Button variant="primary" size="xl" onClick={onContinue} className="w-full">
+        <span lang={continueLang} dir={continueDir}>
+          {continueLabel}
+        </span>
+      </Button>
     </section>
   )
 }

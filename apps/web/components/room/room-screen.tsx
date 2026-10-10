@@ -6,6 +6,7 @@ import {
   isLanguagePreference,
   isOpenStatus,
   type LanguagePreference,
+  REQUESTS_CANCELLED_RPC,
   type StreamEvent,
 } from '@bell/core/taxonomy'
 import {
@@ -17,28 +18,27 @@ import {
   EmergencyScreen,
   type EmergencyVoiceState,
   HelpButton,
-  LanguageOptions,
   LanguagePicker,
   type MyRequestItem,
   MyRequestsSheet,
   RequestCard,
   RequestPanel,
   type RequestPanelState,
+  RequestSentCard,
   RoomControls,
-  SentDialog,
   Sheet,
 } from '@bell/ui'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { callForHelp, requestAction } from '@/lib/client/api'
 import {
-  AUTO_OPTION,
+  allSetTitle,
   CHOOSE_LANGUAGE_SUBTITLE,
   continueLabel,
   isNurseCall,
-  LANGUAGE_GRID_OPTIONS,
   LANGUAGE_OPTIONS,
   languageDir,
   languageName,
+  MOST_USED_OPTIONS,
   patientLabel,
   requestIcon,
   statusLine,
@@ -54,14 +54,24 @@ const HOME_CARDS = 2
 const FEED_LIMIT = 100
 const TICK_MS = 30_000
 
-type SheetName = 'language' | 'room' | 'requests'
+/** The "Request sent" card closes by itself after this long (MRSentB1 plus the timer border). */
+const SENT_CARD_SECONDS = 10
 
-/** Requests from one spoken sentence arrive within this window ("a spill and some water"). */
-const GROUP_WINDOW_MS = 2_500
+type SheetName = 'room' | 'requests'
 
 type DialogState =
-  /** What spoken requests turned into (one sentence can become several requests). */
-  { kind: 'voice'; requests: CallRequest[] } | { kind: 'error'; title: string; body?: string }
+  /** A call that went straight to the nurse (the red overlay on the boards). */
+  | { kind: 'nurse' }
+  /** "You're all set · Español" after the language screen. */
+  | { kind: 'all-set'; language: LanguagePreference }
+  | { kind: 'error'; title: string; body?: string }
+
+/** What a spoken sentence just sent, shown in the Make a request panel until confirmed. */
+interface SentCard {
+  requests: CallRequest[]
+  /** Changes when a request joins, to restart the timer. */
+  key: number
+}
 
 const newestFirst = (a: CallRequest, b: CallRequest) =>
   Date.parse(b.createdAt) - Date.parse(a.createdAt)
@@ -87,10 +97,13 @@ interface RoomScreenProps {
 /** The patient tablet (1024×768, Clay): Make a request, help, My requests, language, room. */
 export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
   const [language, setLanguage] = useState<LanguagePreference>('auto')
-  const [firstRun, setFirstRun] = useState(false)
+  // The full-screen language screen: on first run, or from the header's Language button.
+  const [languageScreen, setLanguageScreen] = useState(false)
   const [pickerValue, setPickerValue] = useState<LanguagePreference>('auto')
   const [sheet, setSheet] = useState<SheetName | null>(null)
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [sentCard, setSentCard] = useState<SentCard | null>(null)
+  const [deletingSent, setDeletingSent] = useState(false)
   const [helpBusy, setHelpBusy] = useState(false)
   const [cancellingHelp, setCancellingHelp] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -100,7 +113,7 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     const settings = loadRoomSettings(roomId)
     setLanguage(settings.language)
     setPickerValue(settings.language)
-    setFirstRun(isFirstRun(roomId))
+    setLanguageScreen(isFirstRun(roomId))
   }, [roomId])
 
   useEffect(() => {
@@ -116,32 +129,23 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     transcript: voice.transcript,
   })
 
-  // A spoken request was classified and sent: say where it stands. One sentence can become
-  // several requests a few hundred ms apart. A new one joins the current batch while its
-  // dialog is open, or when it arrives within GROUP_WINDOW_MS of the last one.
-  const batch = useRef<{ requests: CallRequest[]; lastAt: number; open: boolean }>({
-    requests: [],
-    lastAt: 0,
-    open: false,
-  })
-  useEffect(() => {
-    batch.current.open = dialog?.kind === 'voice'
-  }, [dialog])
+  // A spoken request was classified and sent. A nurse call gets the red "Your nurse has been
+  // told" overlay; anything else shows the "Request sent" card in the panel. One sentence can
+  // send several requests a moment apart: they join the card that is up and restart its timer.
   const onEvent = (event: StreamEvent) => {
     conversation.record(event)
     const request = event.request
     if (event.type !== 'request.created' || request.source !== 'voice') return
-    const arrivedAt = Date.now()
-    const current = batch.current
-    const joins = current.open || arrivedAt - current.lastAt <= GROUP_WINDOW_MS
-    const requests = !joins
-      ? [request]
-      : current.requests.some((r) => r.id === request.id)
-        ? current.requests
-        : [...current.requests, request]
-    batch.current = { requests, lastAt: arrivedAt, open: true }
     setSheet(null)
-    setDialog({ kind: 'voice', requests })
+    if (isNurseCall(request)) {
+      setDialog({ kind: 'nurse' })
+      return
+    }
+    setSentCard((card) => {
+      if (!card) return { requests: [request], key: Date.now() }
+      if (card.requests.some((r) => r.id === request.id)) return card
+      return { requests: [...card.requests, request], key: Date.now() }
+    })
   }
   const { requests, upsertRequest } = useLiveFeed({
     room: roomId,
@@ -157,6 +161,9 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
       (r) => r.source === 'nurse_button' && r.urgency === 'urgent' && isOpenStatus(r.status),
     ) ?? null
   const open = sorted.filter((r) => isOpenStatus(r.status))
+  // While the "Request sent" card is up, its requests are not repeated in the home cards.
+  const onCard = new Set(sentCard?.requests.map((r) => r.id) ?? [])
+  const homeCards = open.filter((r) => !onCard.has(r.id)).slice(0, HOME_CARDS)
   const earlier = sorted.filter((r) => !isOpenStatus(r.status) && sameDay(r.updatedAt, now))
 
   // Hang up the emergency conversation once the call is done or cancelled.
@@ -247,23 +254,35 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     }
   }
 
-  const chooseLanguage = (value: string) => {
-    if (!isLanguagePreference(value)) return
-    setLanguage(value)
-    saveRoomLanguage(roomId, value)
-    setSheet(null)
+  // "Delete" on the Request sent card: cancel what was just sent and tell the voice helper.
+  const deleteSent = async () => {
+    if (!sentCard || deletingSent) return
+    const requestIds = sentCard.requests.map((r) => r.id)
+    setDeletingSent(true)
+    try {
+      const results = await Promise.allSettled(requestIds.map((id) => requestAction(id, 'cancel')))
+      for (const result of results) if (result.status === 'fulfilled') upsertRequest(result.value)
+      void voice.notifyAgent(REQUESTS_CANCELLED_RPC, { requestIds })
+      setSentCard(null)
+      if (results.some((r) => r.status === 'rejected')) {
+        setDialog({ kind: 'error', title: "That didn't go through", body: 'Please try again.' })
+      }
+    } finally {
+      setDeletingSent(false)
+    }
   }
 
-  const finishFirstRun = () => {
+  const openLanguageScreen = () => {
+    setPickerValue(language)
+    setLanguageScreen(true)
+  }
+
+  // Continue: save it, then "You're all set" over the language screen.
+  const continueLanguage = () => {
     setLanguage(pickerValue)
     saveRoomLanguage(roomId, pickerValue)
-    setFirstRun(false)
+    setDialog({ kind: 'all-set', language: pickerValue })
   }
-
-  // The patient's words, shown once when everything came from the same sentence.
-  const voiceBatch = dialog?.kind === 'voice' ? dialog.requests : []
-  const spoken = [...new Set(voiceBatch.map((r) => r.text?.trim()).filter(Boolean))]
-  const heard = spoken.length === 1 ? spoken[0] : undefined
 
   const controls = room.controls
   const roomStatus = controls ? `${controls.temperatureF}° · Lights ${controls.lights}%` : undefined
@@ -274,7 +293,7 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
         title={`Room ${roomId}`}
         subtitle="Tap to request help"
         languageLabel={languageName(language)}
-        onLanguage={() => setSheet('language')}
+        onLanguage={openLanguageScreen}
         {...(roomStatus ? { roomStatus } : {})}
         onRoom={() => {
           setSheet('room')
@@ -283,7 +302,22 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
       />
 
       <main className="flex min-h-0 flex-1 gap-[18px]">
-        {conversation.shown ? (
+        {sentCard ? (
+          <RequestSentCard
+            className="flex-1"
+            items={sentCard.requests.map((r) => ({
+              id: r.id,
+              label: patientLabel(r),
+              icon: requestIcon(r),
+            }))}
+            listening={voice.mode === 'request'}
+            seconds={SENT_CARD_SECONDS}
+            resetKey={sentCard.key}
+            onDone={() => setSentCard(null)}
+            onDelete={() => void deleteSent()}
+            deleting={deletingSent}
+          />
+        ) : conversation.shown ? (
           <ConversationPanel
             className="flex-1"
             items={conversation.items}
@@ -322,9 +356,9 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
                 {open.length > 0 ? 'See all' : 'See past'}
               </Button>
             </div>
-            {open.length > 0 ? (
+            {homeCards.length > 0 ? (
               <ul className="flex min-h-0 flex-1 flex-col gap-3">
-                {open.slice(0, HOME_CARDS).map((request) => (
+                {homeCards.map((request) => (
                   <li key={request.id} className="flex min-h-0 flex-1">
                     <RequestCard
                       className="h-full max-h-[140px]"
@@ -347,19 +381,6 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
           </section>
         </div>
       </main>
-
-      <Sheet
-        open={sheet === 'language'}
-        onOpenChange={(isOpen) => setSheet(isOpen ? 'language' : null)}
-        title="Language"
-      >
-        <LanguageOptions
-          options={LANGUAGE_OPTIONS}
-          value={language}
-          onChange={chooseLanguage}
-          columns={3}
-        />
-      </Sheet>
 
       <Sheet
         open={sheet === 'room'}
@@ -394,20 +415,43 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
         busyId={busyId}
       />
 
-      <SentDialog
-        open={dialog?.kind === 'voice'}
+      <Dialog
+        open={dialog?.kind === 'nurse'}
         onOpenChange={(isOpen) => !isOpen && setDialog(null)}
-        items={voiceBatch.map((r) => ({
-          id: r.id,
-          label: patientLabel(r),
-          icon: requestIcon(r),
-          nurse: isNurseCall(r),
-        }))}
-        {...(heard ? { heard } : {})}
-        onFollow={() => {
+        tone="nurse"
+        title="Your nurse has been told"
+        body="They can see your call now. If you feel worse, press the red button on your bed rail."
+        actions={
+          <DialogClose asChild>
+            <Button variant="nurse" size="lg">
+              Okay
+            </Button>
+          </DialogClose>
+        }
+      />
+
+      <Dialog
+        open={dialog?.kind === 'all-set'}
+        onOpenChange={(isOpen) => {
+          if (isOpen) return
           setDialog(null)
-          setSheet('requests')
+          setLanguageScreen(false)
         }}
+        title={dialog?.kind === 'all-set' ? allSetTitle(dialog.language) : ''}
+        body="You can change this any time with the Language button."
+        actions={
+          <>
+            <DialogClose asChild>
+              <Button variant="primary" size="lg">
+                Okay
+              </Button>
+            </DialogClose>
+            {/* Back: stay on the language screen to pick another one. */}
+            <Button variant="secondary" size="lg" onClick={() => setDialog(null)}>
+              Back
+            </Button>
+          </>
+        }
       />
 
       <Dialog
@@ -428,15 +472,15 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
         }
       />
 
-      {firstRun ? (
+      {languageScreen ? (
         <LanguagePicker
-          options={LANGUAGE_GRID_OPTIONS}
-          autoOption={AUTO_OPTION}
+          options={LANGUAGE_OPTIONS}
+          mostUsed={MOST_USED_OPTIONS}
           value={pickerValue}
           onChange={(value) => {
             if (isLanguagePreference(value)) setPickerValue(value)
           }}
-          onContinue={finishFirstRun}
+          onContinue={continueLanguage}
           continueLabel={continueLabel(pickerValue)}
           {...(pickerValue === 'auto' ? {} : { continueLang: pickerValue })}
           continueDir={languageDir(pickerValue)}

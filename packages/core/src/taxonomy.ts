@@ -190,29 +190,92 @@ export interface StreamEvent {
   request: CallRequest
 }
 
+/**
+ * LiveKit RPC the tablet calls on the agent after its Delete button (on the "Request sent" card)
+ * cancels requests, so the agent says "Okay, cancelled." Payload: JSON `{ "requestIds": ["..."] }`.
+ */
+export const REQUESTS_CANCELLED_RPC = 'bell.requests_cancelled'
+
 /** LiveKit agent name used for explicit dispatch from the token endpoint. */
 export const AGENT_NAME = 'bell-agent'
 
 // ---------------------------------------------------------------------------
 // Languages. Auto-detect is the default (MAI-Transcribe detects the spoken language). A chosen
 // language is one room setting that flows to the speech-to-text hint, the reply language and the
-// text-to-speech language. These are the 12 languages on the chosen language screen.
+// text-to-speech language. These are the 60 languages MAI-Transcribe-2 supports (Microsoft's
+// model card, "Supported languages"), which is also the chosen "Change Language" screen (search,
+// "Most used", then A to Z). Filipino uses the code 'tl'; Norwegian is Bokmål ('no', MAI 'nb').
 // ---------------------------------------------------------------------------
 
 export const LANGUAGES = [
   { code: 'en', label: 'English', nativeLabel: 'English' },
   { code: 'es', label: 'Spanish', nativeLabel: 'Español' },
-  { code: 'zh', label: 'Chinese', nativeLabel: '中文' },
-  { code: 'tl', label: 'Tagalog', nativeLabel: 'Tagalog' },
-  { code: 'ht', label: 'Haitian Creole', nativeLabel: 'Kreyòl ayisyen' },
+  { code: 'zh', label: 'Chinese', nativeLabel: '简体中文' },
   { code: 'pt', label: 'Portuguese', nativeLabel: 'Português' },
-  { code: 'ru', label: 'Russian', nativeLabel: 'Русский' },
-  { code: 'ar', label: 'Arabic', nativeLabel: 'العربية' },
   { code: 'hi', label: 'Hindi', nativeLabel: 'हिन्दी' },
+  { code: 'gu', label: 'Gujarati', nativeLabel: 'ગુજરાતી' },
   { code: 'ko', label: 'Korean', nativeLabel: '한국어' },
-  { code: 'vi', label: 'Vietnamese', nativeLabel: 'Tiếng Việt' },
+  { code: 'ar', label: 'Arabic', nativeLabel: 'العربية', rtl: true },
   { code: 'pl', label: 'Polish', nativeLabel: 'Polski' },
+  { code: 'af', label: 'Afrikaans', nativeLabel: 'Afrikaans' },
+  { code: 'hy', label: 'Armenian', nativeLabel: 'Հայերեն' },
+  { code: 'as', label: 'Assamese', nativeLabel: 'অসমীয়া' },
+  { code: 'az', label: 'Azerbaijani', nativeLabel: 'Azərbaycanca' },
+  { code: 'bn', label: 'Bengali', nativeLabel: 'বাংলা' },
+  { code: 'bs', label: 'Bosnian', nativeLabel: 'Bosanski' },
+  { code: 'bg', label: 'Bulgarian', nativeLabel: 'Български' },
+  { code: 'yue', label: 'Cantonese', nativeLabel: '粵語' },
+  { code: 'ca', label: 'Catalan', nativeLabel: 'Català' },
+  { code: 'cs', label: 'Czech', nativeLabel: 'Čeština' },
+  { code: 'da', label: 'Danish', nativeLabel: 'Dansk' },
+  { code: 'nl', label: 'Dutch', nativeLabel: 'Nederlands' },
+  { code: 'et', label: 'Estonian', nativeLabel: 'Eesti' },
+  { code: 'tl', label: 'Filipino', nativeLabel: 'Filipino' },
+  { code: 'fi', label: 'Finnish', nativeLabel: 'Suomi' },
+  { code: 'fr', label: 'French', nativeLabel: 'Français' },
+  { code: 'gl', label: 'Galician', nativeLabel: 'Galego' },
+  { code: 'de', label: 'German', nativeLabel: 'Deutsch' },
+  { code: 'el', label: 'Greek', nativeLabel: 'Ελληνικά' },
+  { code: 'he', label: 'Hebrew', nativeLabel: 'עברית', rtl: true },
+  { code: 'hu', label: 'Hungarian', nativeLabel: 'Magyar' },
+  { code: 'is', label: 'Icelandic', nativeLabel: 'Íslenska' },
+  { code: 'id', label: 'Indonesian', nativeLabel: 'Bahasa Indonesia' },
+  { code: 'it', label: 'Italian', nativeLabel: 'Italiano' },
+  { code: 'ja', label: 'Japanese', nativeLabel: '日本語' },
+  { code: 'kn', label: 'Kannada', nativeLabel: 'ಕನ್ನಡ' },
+  { code: 'kk', label: 'Kazakh', nativeLabel: 'Қазақ тілі' },
+  { code: 'lv', label: 'Latvian', nativeLabel: 'Latviešu' },
+  { code: 'lt', label: 'Lithuanian', nativeLabel: 'Lietuvių' },
+  { code: 'mk', label: 'Macedonian', nativeLabel: 'Македонски' },
+  { code: 'ms', label: 'Malay', nativeLabel: 'Bahasa Melayu' },
+  { code: 'ml', label: 'Malayalam', nativeLabel: 'മലയാളം' },
+  { code: 'mr', label: 'Marathi', nativeLabel: 'मराठी' },
+  { code: 'ne', label: 'Nepali', nativeLabel: 'नेपाली' },
+  { code: 'no', label: 'Norwegian', nativeLabel: 'Norsk' },
+  { code: 'or', label: 'Odia', nativeLabel: 'ଓଡ଼ିଆ' },
+  { code: 'fa', label: 'Persian', nativeLabel: 'فارسی', rtl: true },
+  { code: 'pa', label: 'Punjabi', nativeLabel: 'ਪੰਜਾਬੀ' },
+  { code: 'ro', label: 'Romanian', nativeLabel: 'Română' },
+  { code: 'ru', label: 'Russian', nativeLabel: 'Русский' },
+  { code: 'sk', label: 'Slovak', nativeLabel: 'Slovenčina' },
+  { code: 'sl', label: 'Slovenian', nativeLabel: 'Slovenščina' },
+  { code: 'sw', label: 'Swahili', nativeLabel: 'Kiswahili' },
+  { code: 'sv', label: 'Swedish', nativeLabel: 'Svenska' },
+  { code: 'ta', label: 'Tamil', nativeLabel: 'தமிழ்' },
+  { code: 'te', label: 'Telugu', nativeLabel: 'తెలుగు' },
+  { code: 'th', label: 'Thai', nativeLabel: 'ไทย' },
+  { code: 'tr', label: 'Turkish', nativeLabel: 'Türkçe' },
+  { code: 'uk', label: 'Ukrainian', nativeLabel: 'Українська' },
+  { code: 'ur', label: 'Urdu', nativeLabel: 'اردو', rtl: true },
+  { code: 'vi', label: 'Vietnamese', nativeLabel: 'Tiếng Việt' },
 ] as const
+
+/** The "Most used" row on the language screen, in board order. */
+export const MOST_USED_LANGUAGES = ['en', 'es', 'zh', 'pt', 'hi', 'gu', 'ko', 'ar'] as const
+
+/** Right-to-left scripts. */
+export const isRtlLanguage = (code: string): boolean =>
+  LANGUAGES.some((l) => l.code === code && 'rtl' in l)
 
 /** Languages Deepgram Flux (`flux-general-multi`, the fallback STT) understands. */
 export const FLUX_LANGUAGES = ['en', 'es', 'fr', 'de', 'hi', 'ru', 'pt', 'ja', 'it', 'nl'] as const

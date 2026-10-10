@@ -79,8 +79,10 @@ packages/ui     design tokens (tokens.css from the design system) and base compo
   timeout over 2 s, errors, bad output or rate limits. Every path ends on the nurse, and it never rejects. Jev also
   tags each request with its group (water_food, comfort, cleaning, ...) for the tablet's icons.
 - **Language**: Auto by default: MAI-Transcribe detects what the patient speaks and the agent replies in it. The
-  tablet also offers the 12 languages of the chosen language screen as a room setting (a hint for speech-to-text,
-  the replies and text-to-speech). Haitian Creole is not supported by the speech models yet. The theme is Clay (Night is kept in the tokens for later).
+  tablet's Change Language screen (search, "Most used", A to Z) offers the 60 languages MAI-Transcribe-2 supports
+  as a room setting (a hint for speech-to-text, the replies and text-to-speech). Fixed spoken lines exist for all
+  60 (16 hand-written, 44 AI-translated and awaiting native review). Instant red-flag phrases cover 16 languages;
+  in the others, clinical requests reach the nurse through Jev and the LLM. The theme is Clay (Night is kept in the tokens for later).
 - **Voice agent**: tap to talk. The tablet gets a LiveKit token from `POST /api/livekit/token`, which dispatches the
   agent with `{ roomId, language, mode, emergencyRequestId }`. Speech-to-text is MAI-Transcribe-2 through the Vercel
   AI Gateway: a local VAD cuts each utterance (600 ms of silence), the streaming model gives live partials and the

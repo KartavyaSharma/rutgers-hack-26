@@ -94,22 +94,35 @@ export function gatewayTranscribers(apiKey: string): MaiTranscribers {
   }
 }
 
+/** Room-language codes MAI takes under another name ("tl" and "no" are 400s; checked). */
+const MAI_ALIASES: Readonly<Record<string, string>> = { tl: 'fil', no: 'nb' }
+
 /**
- * The hint MAI accepts for a room language, or undefined (auto-detect). MAI calls Tagalog
- * "fil" and rejects "tl" with a 400; it has no Haitian Creole, and "ht" is also a 400.
+ * Locale hints MAI accepted, each checked with a real call against mai-transcribe-2. A room
+ * language outside this set (e.g. after the language list changes) is simply auto-detected.
  */
+const MAI_HINTS: ReadonlySet<string> = new Set(
+  (
+    'en es zh pt hi gu ko ar pl af hy as az bn bs bg yue ca cs da nl et fi fr gl de el he hu is ' +
+    'id it ja kn kk lv lt mk ms ml mr ne or fa pa ro ru sk sl sw sv ta te th tr uk ur vi fil nb'
+  ).split(' '),
+)
+
+/** The hint MAI accepts for a room language, or undefined (auto-detect). */
 export function maiLanguageHint(language: string): string | undefined {
   if (language === 'auto') return undefined
-  if (language === 'tl') return 'fil'
-  if (language === 'ht') return undefined
-  return language
+  const code = MAI_ALIASES[language] ?? language
+  return MAI_HINTS.has(code) ? code : undefined
 }
 
-/** The board's code for a language MAI reports ("fil" is the board's "tl"). */
+/** MAI's names for languages the board codes differently. */
+const BOARD_ALIASES: Readonly<Record<string, string>> = { fil: 'tl', nb: 'no', iw: 'he' }
+
+/** The board's code for a language MAI reports ("fil" is the board's "tl", "nb" its "no"). */
 export function boardLanguage(language: string | undefined): string | undefined {
   if (!language) return undefined
   const base = language.split(/[-_]/)[0]?.toLowerCase()
-  return base === 'fil' ? 'tl' : base
+  return base ? (BOARD_ALIASES[base] ?? base) : undefined
 }
 
 /**
@@ -559,7 +572,9 @@ export class MaiSegmenter {
 }
 
 const NON_LATIN = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u
-const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu
+/** Scripts measured in characters (written without spaces between words). */
+const CJK =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}]/gu
 
 /** At most 4 CJK characters, or at most 2 words. */
 export function isShortUtterance(text: string): boolean {
@@ -588,8 +603,12 @@ export function resolveUtteranceLanguage(input: {
 }): { language: string | undefined; confident: boolean } {
   const { text, last } = input
   if (NON_LATIN.test(text)) {
+    // A non-Latin script settles it: core names the common ones from the script alone; for
+    // others (e.g. Thai), MAI's own detection on that script is trusted.
     const script = guessLanguage(text)
     if (script) return { language: script, confident: true }
+    const fromModel = input.detected ? boardLanguage(input.detected) : undefined
+    if (fromModel) return { language: fromModel, confident: true }
   }
   const detected = input.detected
     ? (canonicalLanguage(input.detected) ?? boardLanguage(input.detected))

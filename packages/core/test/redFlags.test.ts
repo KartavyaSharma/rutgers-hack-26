@@ -70,7 +70,7 @@ describe('detectRedFlag', () => {
   })
 })
 
-describe('detectRedFlag: tl, ht, ar, ko, vi, pl', () => {
+describe('detectRedFlag: tl, ar, ko, vi, pl', () => {
   it.each([
     // Tagalog
     ['Masakit ang dibdib ko', 'chest_pain', 'tl'],
@@ -79,13 +79,6 @@ describe('detectRedFlag: tl, ht, ar, ko, vi, pl', () => {
     ['Dumudugo ang sugat ko', 'bleeding', 'tl'],
     ['Saklolo!', 'emergency', 'tl'],
     ['Hindi ko maigalaw ang braso ko', 'stroke_signs', 'tl'],
-    // Haitian Creole
-    ['Mwen gen doulè nan pwatrin', 'chest_pain', 'ht'],
-    ['Mwen pa ka respire', 'breathing', 'ht'],
-    ['Mwen tonbe nan twalèt la', 'fall', 'ht'],
-    ["M'ap senyen anpil", 'bleeding', 'ht'],
-    ['Anmwe!', 'emergency', 'ht'],
-    ['Figi mwen tòde', 'stroke_signs', 'ht'],
     // Arabic
     ['عندي ألم في الصدر', 'chest_pain', 'ar'],
     ['لا أستطيع التنفس', 'breathing', 'ar'],
@@ -123,7 +116,6 @@ describe('detectRedFlag: tl, ht, ar, ko, vi, pl', () => {
   it.each([
     // Things falling are not patients falling.
     'Nahulog ang telepono ko',
-    'Telefòn mwen tonbe',
     'Điện thoại của tôi bị rơi',
     'Telefon mi upadł',
     'الصينية وقعت على الأرض',
@@ -131,7 +123,6 @@ describe('detectRedFlag: tl, ht, ar, ko, vi, pl', () => {
     '의자가 넘어졌어요',
     // Everyday requests.
     'Kailangan ko po ng kumot',
-    'Mwen bezwen yon dra tanpri',
     'أحتاج بطانية من فضلك',
     '담요 좀 주세요',
     '도와주세요',
@@ -139,7 +130,6 @@ describe('detectRedFlag: tl, ht, ar, ko, vi, pl', () => {
     'Đi từ từ thôi',
     'Potrzebuję koca, proszę',
     // "Not an emergency".
-    'Se pa yon ijans',
     'Không phải cấp cứu',
     'To nie nagły wypadek',
   ])('does not flag %j', (text) => {

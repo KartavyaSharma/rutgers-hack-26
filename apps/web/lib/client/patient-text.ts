@@ -2,8 +2,10 @@ import {
   type CallRequest,
   groupOfCategory,
   IMMEDIATE_BY_REASON,
+  isRtlLanguage,
   LANGUAGES,
   type LanguagePreference,
+  MOST_USED_LANGUAGES,
   optionById,
   type RequestStatus,
 } from '@bell/core/taxonomy'
@@ -66,56 +68,72 @@ export const timeAgo = (iso: string, now: number): string => {
 
 export const AUTO_LANGUAGE_LABEL = 'Auto (detect)'
 
-/** Languages written right to left. */
-const RTL_LANGUAGES: ReadonlySet<LanguagePreference> = new Set(['ar'])
-
 export const languageDir = (language: LanguagePreference): 'ltr' | 'rtl' =>
-  RTL_LANGUAGES.has(language) ? 'rtl' : 'ltr'
+  language !== 'auto' && isRtlLanguage(language) ? 'rtl' : 'ltr'
 
-/** "Auto (detect)": the default, the language is detected from speech. */
+/** "Auto (detect)": the default; the spoken language is detected. First in "Most used". */
 export const AUTO_OPTION: LanguageOption = {
   value: 'auto',
-  label: AUTO_LANGUAGE_LABEL,
-  sublabel: 'Any language',
+  // "Auto (detect)" does not fit a 76px tile beside the check mark; the header says it in full.
+  name: 'Auto',
+  nativeName: 'Any language',
 }
 
-/** The 12 languages in the board's order, by their own names. */
-export const LANGUAGE_GRID_OPTIONS: readonly LanguageOption[] = LANGUAGES.map((l) => ({
-  value: l.code,
-  label: l.nativeLabel,
-  sublabel: l.label,
-  lang: l.code,
-  dir: languageDir(l.code),
-}))
+const toOption = (language: (typeof LANGUAGES)[number]): LanguageOption => ({
+  value: language.code,
+  name: language.label,
+  nativeName: language.nativeLabel,
+  lang: language.code,
+  dir: languageDir(language.code),
+})
 
-/** Auto first, then the 12 languages (the Language sheet). */
-export const LANGUAGE_OPTIONS: readonly LanguageOption[] = [AUTO_OPTION, ...LANGUAGE_GRID_OPTIONS]
+/** Every language from the taxonomy (the screen sorts them A to Z). */
+export const LANGUAGE_OPTIONS: readonly LanguageOption[] = LANGUAGES.map(toOption)
 
+/** "Most used": Auto, then MOST_USED_LANGUAGES in order. */
+export const MOST_USED_OPTIONS: readonly LanguageOption[] = [
+  AUTO_OPTION,
+  ...MOST_USED_LANGUAGES.flatMap((code) => {
+    const language = LANGUAGES.find((l) => l.code === code)
+    return language ? [toOption(language)] : []
+  }),
+]
+
+/** The language's own name for the header button, e.g. "Español". */
 export const languageName = (language: LanguagePreference): string =>
   language === 'auto'
     ? AUTO_LANGUAGE_LABEL
     : (LANGUAGES.find((l) => l.code === language)?.nativeLabel ?? AUTO_LANGUAGE_LABEL)
 
-// From the LangStart board.
-const CONTINUE: Record<LanguagePreference, string> = {
-  auto: 'Continue',
+// From the language boards. Keyed by code so the list can change without breaking this.
+const CONTINUE: Readonly<Record<string, string>> = {
   en: 'Continue',
   es: 'Continuar',
-  zh: '继续',
-  tl: 'Magpatuloy',
-  ht: 'Kontinye',
   pt: 'Continuar',
-  ru: 'Далее',
-  ar: 'متابعة',
+  zh: '继续',
   hi: 'आगे बढ़ें',
   ko: '계속',
-  vi: 'Tiếp tục',
+  ar: 'متابعة',
   pl: 'Dalej',
+  ru: 'Далее',
+  vi: 'Tiếp tục',
+  fr: 'Continuer',
+  it: 'Continua',
+  de: 'Weiter',
+  tl: 'Magpatuloy',
+  ht: 'Kontinye',
 }
 
-/** "Continue" in the chosen language, for the first-run screen. */
-export const continueLabel = (language: LanguagePreference): string => CONTINUE[language]
+/** "Continue" in the chosen language where the board has it, else English. */
+export const continueLabel = (language: LanguagePreference): string =>
+  CONTINUE[language] ?? 'Continue'
 
-/** "Choose your language" in other languages (from the LangStart board). */
+const ALL_SET: Readonly<Record<string, string>> = { en: "You're all set", es: 'Listo' }
+
+/** "You're all set · Español" (the board's confirmation after Continue). */
+export const allSetTitle = (language: LanguagePreference): string =>
+  `${ALL_SET[language] ?? ALL_SET.en} · ${languageName(language)}`
+
+/** "Choose your language" in other languages (from the language board). */
 export const CHOOSE_LANGUAGE_SUBTITLE =
-  'Elija su idioma · 选择您的语言 · Pumili ng wika · Chwazi lang ou'
+  'Elija su idioma · 选择您的语言 · 언어를 선택하세요 · Escolha o idioma'

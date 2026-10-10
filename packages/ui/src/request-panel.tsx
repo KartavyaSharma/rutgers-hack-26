@@ -6,7 +6,8 @@ export type RequestPanelState = 'idle' | 'connecting' | 'listening' | 'unavailab
 const COPY: Record<RequestPanelState, { title: string; hint: string }> = {
   idle: { title: 'Make a request', hint: 'Tap here to talk' },
   connecting: { title: 'Make a request', hint: 'Getting ready…' },
-  listening: { title: "I'm listening", hint: "Say what you need. Tap here when you're done." },
+  // Ends by itself when the patient stops talking (end of turn), so no "tap when done" here.
+  listening: { title: "I'm listening", hint: 'Say what you need.' },
   unavailable: { title: 'Make a request', hint: "Voice isn't set up yet" },
 }
 
@@ -37,21 +38,29 @@ export function RequestPanel({ state, onPress, hint, className }: RequestPanelPr
         className,
       )}
     >
+      {listening ? (
+        // MR6Loading: the mic with two rings spreading out from it.
+        <span aria-hidden="true" className="relative size-disc-listen shrink-0">
+          <span className="absolute inset-0 rounded-pill bg-action/35 motion-safe:animate-ripple" />
+          <span className="absolute inset-0 rounded-pill bg-action/35 motion-safe:animate-ripple [animation-delay:1s]" />
+          <span className="absolute inset-0 flex items-center justify-center rounded-pill bg-action text-on-action">
+            <Icon name="mic" className="size-[76px]" />
+          </span>
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex size-disc-xl items-center justify-center rounded-pill bg-action text-on-action shadow-[0_0_0_var(--size-ring)_var(--color-action-tint)]',
+            state === 'unavailable' && 'bg-muted',
+            state === 'connecting' && 'opacity-80',
+          )}
+        >
+          <Icon name="mic" className="size-[84px]" />
+        </span>
+      )}
       <span
-        aria-hidden="true"
-        className={cn(
-          'flex items-center justify-center rounded-pill bg-action text-on-action',
-          listening
-            ? 'size-disc-listen shadow-[0_0_0_var(--size-ring)_var(--color-action-tint),0_0_0_calc(var(--size-ring)*2)_var(--color-action-tint-soft)] motion-safe:animate-ripple-soft'
-            : 'size-disc-xl shadow-[0_0_0_var(--size-ring)_var(--color-action-tint)]',
-          state === 'unavailable' && 'bg-muted',
-          state === 'connecting' && 'opacity-80',
-        )}
-      >
-        <Icon name="mic" className={listening ? 'size-[76px]' : 'size-[84px]'} />
-      </span>
-      <span
-        className={cn('font-heading text-display-xl leading-none', listening ? 'mt-5' : 'mt-3')}
+        className={cn('font-heading text-display-xl leading-none', listening ? 'mt-10' : 'mt-3')}
       >
         {copy.title}
       </span>

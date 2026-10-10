@@ -288,6 +288,27 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
     [roomId, language, stop],
   )
 
+  /**
+   * Tell the agent about something the patient did on the screen (LiveKit RPC to the agent
+   * participant), e.g. that they deleted what was just sent. Best effort: no session, no agent or
+   * an RPC error is fine, since the API call already did the real work.
+   */
+  const notifyAgent = useCallback(async (method: string, payload: unknown) => {
+    const room = roomRef.current
+    if (!room) return
+    const agent = [...room.remoteParticipants.values()].find((p) => p.isAgent)
+    if (!agent) return
+    try {
+      await room.localParticipant.performRpc({
+        destinationIdentity: agent.identity,
+        method,
+        payload: JSON.stringify(payload),
+      })
+    } catch (err) {
+      console.warn(`[voice] the agent did not take ${method}`, err)
+    }
+  }, [])
+
   // Hang up when the page goes away.
   useEffect(
     () => () => {
@@ -307,5 +328,6 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
     transcript,
     start,
     stop,
+    notifyAgent,
   }
 }

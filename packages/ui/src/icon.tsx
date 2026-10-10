@@ -40,6 +40,12 @@ const ICONS = {
     </>
   ),
   close: <path d="M6 6l12 12M18 6L6 18" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4-4" />
+    </>
+  ),
   /** Points right; rotate for back. */
   chevron: <path d="M9 5l7 7-7 7" />,
   clock: (

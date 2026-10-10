@@ -7,7 +7,8 @@ export const MIN_INTERRUPTION_MS = 600
 /** Minimum words to interrupt (for languages written with spaces; see interruptionWords). */
 export const MIN_INTERRUPTION_WORDS = 2
 
-const CJK_LANGUAGES = new Set(['zh', 'ja', 'ko', 'yue'])
+/** Languages written without spaces between words (plus Korean, kept on the duration rule). */
+const CJK_LANGUAGES = new Set(['zh', 'ja', 'ko', 'yue', 'th'])
 
 /**
  * Words needed to interrupt, for the language being spoken. LiveKit 1.9.2 counts words by

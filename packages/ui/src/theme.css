@@ -131,6 +131,17 @@
 
 @theme {
   --animate-ripple-soft: bell-breathe 2.4s ease-in-out infinite;
+  /* The "Request sent" card's border drains over its timeout (duration set inline). */
+  --animate-drain: bell-drain 10s linear forwards;
+
+  @keyframes bell-drain {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: 100;
+    }
+  }
 
   @keyframes bell-breathe {
     0%,

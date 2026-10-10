@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LANGUAGES, PATIENT_MESSAGE_KEYS, patientMessage } from '../src'
 import {
   canonicalLanguage,
   guessLanguage,
@@ -36,7 +37,6 @@ describe('guessLanguage', () => {
     ['toi can them chan', 'vi'],
     ['Potrzebuję koca, proszę', 'pl'],
     ['Kailangan ko po ng kumot', 'tl'],
-    ['Mwen bezwen yon dra tanpri', 'ht'],
     ['我需要毯子', 'zh'],
     ['もう一枚毛布をください', 'ja'],
     ['мне нужно одеяло', 'ru'],
@@ -63,13 +63,31 @@ describe('language codes', () => {
     ['ar-EG', 'ar'],
     ['vie', 'vi'],
     ['EN-us', 'en'],
+    ['nb', 'no'],
+    ['nn', 'no'],
+    ['iw', 'he'],
+    ['in', 'id'],
+    ['zh-HK', 'yue'],
+    ['zh-Hant-HK', 'yue'],
+    ['zh-MO', 'yue'],
+    ['zh-Hant-TW', 'zh'],
+    ['yue', 'yue'],
+    ['yue-HK', 'yue'],
+    ['pa-IN', 'pa'],
+    ['hr', 'bs'],
+    ['sr-Latn', 'bs'],
+    ['mo', 'ro'],
+    ['fas', 'fa'],
+    ['ory', 'or'],
+    ['swh', 'sw'],
   ])('canonicalLanguage(%j) = %s', (code, expected) => {
     expect(canonicalLanguage(code)).toBe(expected)
   })
 
   it('returns null for languages we have no strings for', () => {
-    expect(canonicalLanguage('sw')).toBeNull()
-    expect(replyLanguage('sw')).toBe('en')
+    expect(canonicalLanguage('ht')).toBeNull()
+    expect(canonicalLanguage('yo')).toBeNull()
+    expect(replyLanguage('yo')).toBe('en')
     expect(replyLanguage('auto')).toBe('en')
   })
 
@@ -77,19 +95,94 @@ describe('language codes', () => {
     ['zh-CN', 'zh'],
     ['fil', 'tl'],
     ['Tagalog', 'tl'],
-    ['Haitian Creole', 'ht'],
-    ['Kreyòl ayisyen', 'ht'],
+    ['Farsi', 'fa'],
+    ['Norsk', 'no'],
+    ['Cantonese', 'yue'],
+    ['ગુજરાતી', 'gu'],
     ['Tiếng Việt', 'vi'],
     ['한국어', 'ko'],
     ['العربية', 'ar'],
     ['Polski', 'pl'],
-    ['sw', 'sw'],
+    ['yo', 'yo'],
   ])('normalizeLanguageCode(%j) = %s', (raw, expected) => {
     expect(normalizeLanguageCode(raw, '')).toBe(expected)
   })
 
   it('falls back to guessing from the text', () => {
-    expect(normalizeLanguageCode('', 'Mwen bezwen èd')).toBe('ht')
+    expect(normalizeLanguageCode('', 'Potrzebuję koca, proszę')).toBe('pl')
     expect(normalizeLanguageCode('???', '가슴이 아파요')).toBe('ko')
+  })
+})
+
+describe('script detection for the board languages', () => {
+  // Every language not written in Latin script, checked against its own message lines.
+  const NON_LATIN = [
+    'zh',
+    'yue',
+    'ja',
+    'ko',
+    'ar',
+    'fa',
+    'ur',
+    'he',
+    'hi',
+    'mr',
+    'ne',
+    'bn',
+    'as',
+    'gu',
+    'pa',
+    'or',
+    'ta',
+    'te',
+    'kn',
+    'ml',
+    'th',
+    'hy',
+    'el',
+    'ru',
+    'uk',
+    'bg',
+    'mk',
+    'kk',
+  ] as const
+  const allLines = (code: string) =>
+    PATIENT_MESSAGE_KEYS.map((key) => patientMessage(key, code)).join(' ')
+
+  it('covers every non-Latin board language', () => {
+    const latin = LANGUAGES.filter((l) => /^[\p{Script=Latin}\s.,'()-]+$/u.test(l.nativeLabel))
+    expect(NON_LATIN.length + latin.length).toBe(LANGUAGES.length)
+  })
+
+  it.each(NON_LATIN)('%s', (code) => {
+    expect(guessLanguage(allLines(code))).toBe(code)
+  })
+
+  it.each([
+    ['મને પાણી જોઈએ છે', 'gu'],
+    ['আমার জল দরকার', 'bn'],
+    ['মোৰ বিছনাখন সলাব লাগে', 'as'],
+    ['எனக்கு தண்ணீர் வேண்டும்', 'ta'],
+    ['నాకు నీళ్లు కావాలి', 'te'],
+    ['ನನಗೆ ನೀರು ಬೇಕು', 'kn'],
+    ['എനിക്ക് വെള്ളം വേണം', 'ml'],
+    ['ମୋତେ ପାଣି ଦରକାର', 'or'],
+    ['ਮੈਨੂੰ ਪਾਣੀ ਚਾਹੀਦਾ ਹੈ', 'pa'],
+    ['ขอน้ำหน่อย', 'th'],
+    ['אני צריך מים', 'he'],
+    ['Ինձ ջուր է պետք', 'hy'],
+    ['Χρειάζομαι νερό', 'el'],
+    ['مجھے پانی چاہیے', 'ur'],
+    ['मला पाणी हवं आहे', 'mr'],
+    ['मलाई पानी चाहियो', 'ne'],
+    ['मुझे पानी चाहिए', 'hi'],
+    ['我想要水', 'zh'],
+    ['我想要啲水', 'yue'],
+    ['Мені потрібна вода', 'uk'],
+    ['Ми треба некој да дојде', 'mk'],
+    ['Ми трябва вода', 'bg'],
+    ['Маған су керек', 'kk'],
+  ])('%j -> %s', (text, code) => {
+    expect(guessLanguage(text)).toBe(code)
   })
 })

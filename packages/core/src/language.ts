@@ -21,95 +21,85 @@ export const normalizeText = (text: string): string =>
     .replace(/\s+/g, ' ')
     .trim()
 
-/** Not on the language screen, but auto-detect (and the Deepgram fallback) can still land on them. */
-export const EXTRA_REPLY_LANGUAGES = ['fr', 'de', 'ja', 'it', 'nl'] as const
+/** Every board language has patient-facing strings (see messages.ts). */
+export type SupportedLanguage = LanguageCode
 
-/** Languages we have patient-facing strings for: the 12 room languages plus the extras. */
-export type SupportedLanguage = LanguageCode | (typeof EXTRA_REPLY_LANGUAGES)[number]
-
-export const SUPPORTED_LANGUAGES: ReadonlyArray<SupportedLanguage> = [
-  ...LANGUAGES.map((language) => language.code),
-  ...EXTRA_REPLY_LANGUAGES,
-]
+export const SUPPORTED_LANGUAGES: ReadonlyArray<SupportedLanguage> = LANGUAGES.map(
+  (language) => language.code,
+)
 
 const isSupportedLanguage = (value: string): value is SupportedLanguage =>
   (SUPPORTED_LANGUAGES as readonly string[]).includes(value)
 
-// Small stopword lists over normalizeText output. Words shared by several languages are fine:
+type Stopwords = ReadonlyArray<readonly [SupportedLanguage, ReadonlySet<string>]>
+
+const stopwords = (table: ReadonlyArray<readonly [SupportedLanguage, string]>): Stopwords =>
+  table.map(([language, words]) => [language, new Set(normalizeText(words).split(' '))] as const)
+
+// Latin-script languages, over normalizeText output. Words shared by several languages are fine:
 // distinctive words decide, and a tie means no guess.
-const STOPWORDS: ReadonlyArray<readonly [SupportedLanguage, ReadonlySet<string>]> = (
+const LATIN_STOPWORDS = stopwords([
   [
-    [
-      'en',
-      'i im ive id my me the is are was an can cant it its to of and please need want have has dont not this that in on for with you your help get could would some another there here what when how hurts feel room someone',
-    ],
-    [
-      'es',
-      'el la los las del de que y en un una mi mis me por favor necesito quiero tengo estoy esta es con para puedo duele se lo su otra otro mas muy hay pero como cuando donde ayuda habitacion gracias usted yo no cuarto',
-    ],
-    [
-      'pt',
-      'o os as do da dos das de que e em um uma meu minha nao por favor preciso quero tenho estou eu com para consigo dor no na voce mais muito obrigado obrigada ajuda quarto outro outra esta ta',
-    ],
-    [
-      'tl',
-      'ako ang ng mga sa ko po ba hindi kailangan pwede puwede naman yung nang ito iyon akin ikaw kayo salamat paki pakiusap gusto masakit',
-    ],
-    [
-      'ht',
-      'mwen m ou li nou yo pa ak nan pou ki bezwen tanpri kapab ka genyen gen se sa mesi kounye map pral',
-    ],
-    [
-      'pl',
-      'nie jest mi mnie sie prosze potrzebuje czy jak to w z na ze moge boli chce mam jestem dziekuje bardzo',
-    ],
-    [
-      'vi',
-      'toi khong duoc giup xin cho cua mot nay can bi dau voi roi nhe ban em anh chi la va co',
-    ],
-    [
-      'fr',
-      'le la les de des du et en un une mon ma mes je ne pas sil vous plait jai besoin suis avec pour est au dans tres mal aide chambre merci voudrais peux',
-    ],
-    [
-      'de',
-      'ich mein meine meinen der die das ist nicht und ein eine einen bitte brauche kann habe mir mich es zu mit fur noch haben sie hilfe zimmer kissen decke wasser',
-    ],
-    [
-      'it',
-      'il lo la gli le di che e un una mio mia non per favore ho sono mi ancora bisogno posso vorrei aiuto camera grazie cuscino coperta',
-    ],
-    [
-      'nl',
-      'ik mijn de het een is niet en van mag kan heb wil graag alstublieft nog deze kamer hulp dank kussen deken er op met',
-    ],
-  ] as const
-).map(([language, words]) => [language, new Set(words.split(' '))] as const)
+    'en',
+    'i im ive id my me the is are was an can cant it its to of and please need want have has dont not this that in on for with you your help get could would some another there here what when how hurts feel room someone',
+  ],
+  [
+    'es',
+    'el la los las del de que y en un una mi mis me por favor necesito quiero tengo estoy esta es con para puedo duele se lo su otra otro mas muy hay pero como cuando donde ayuda habitacion gracias usted yo no cuarto',
+  ],
+  [
+    'pt',
+    'o os as do da dos das de que e em um uma meu minha nao por favor preciso quero tenho estou eu com para consigo dor no na voce mais muito obrigado obrigada ajuda quarto outro outra esta ta',
+  ],
+  [
+    'tl',
+    'ako ang ng mga sa ko po ba hindi kailangan pwede puwede naman yung nang ito iyon akin ikaw kayo salamat paki pakiusap gusto masakit',
+  ],
+  [
+    'pl',
+    'nie jest mi mnie sie prosze potrzebuje czy jak to w z na ze moge boli chce mam jestem dziekuje bardzo',
+  ],
+  ['vi', 'toi khong duoc giup xin cho cua mot nay can bi dau voi roi nhe ban em anh chi la va co'],
+  [
+    'fr',
+    'le la les de des du et en un une mon ma mes je ne pas sil vous plait jai besoin suis avec pour est au dans tres mal aide chambre merci voudrais peux',
+  ],
+  [
+    'de',
+    'ich mein meine meinen der die das ist nicht und ein eine einen bitte brauche kann habe mir mich es zu mit fur noch haben sie hilfe zimmer kissen decke wasser',
+  ],
+  [
+    'it',
+    'il lo la gli le di che e un una mio mia non per favore ho sono mi ancora bisogno posso vorrei aiuto camera grazie cuscino coperta',
+  ],
+  [
+    'nl',
+    'ik mijn de het een is niet en van mag kan heb wil graag alstublieft nog deze kamer hulp dank kussen deken er op met',
+  ],
+])
 
-// Letters only Vietnamese uses (horn, hook above, dot below, d with stroke). Shared accents such
-// as "ê" or "ô" are left out so French and Portuguese don't look Vietnamese.
-const VIETNAMESE_LETTERS = /[ơưđạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/iu
+// Devanagari: Hindi unless Marathi or Nepali words win.
+const DEVANAGARI_STOPWORDS = stopwords([
+  ['hi', 'है हैं मुझे में नहीं क्या चाहिए और का की के को से यह मैं आप'],
+  ['mr', 'आहे आहेत मला मी नाही हवं हवे आणि काय तुम्ही आम्ही होतं करा'],
+  ['ne', 'छ छु छैन मलाई म गर्न भयो हुन्छ तपाईं चाहियो पनि गर्नुहोस्'],
+])
 
-/**
- * Best-effort guess of the language of a short patient message: by script first (Japanese kana,
- * Hangul, Chinese, Arabic, Devanagari, Cyrillic, Vietnamese letters), then by stopwords.
- * Returns null when there is no signal (e.g. a single unknown word) or two languages tie.
- */
-export const guessLanguage = (text: string): SupportedLanguage | null => {
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'ja'
-  if (/\p{Script=Hangul}/u.test(text)) return 'ko'
-  if (/\p{Script=Han}/u.test(text)) return 'zh'
-  if (/\p{Script=Arabic}/u.test(text)) return 'ar'
-  if (/\p{Script=Devanagari}/u.test(text)) return 'hi'
-  if (/\p{Script=Cyrillic}/u.test(text)) return 'ru'
-  if (VIETNAMESE_LETTERS.test(text)) return 'vi'
+// Cyrillic without a distinctive letter: Russian unless Bulgarian words win.
+const CYRILLIC_STOPWORDS = stopwords([
+  ['ru', 'и в не на я мне нужно пожалуйста у меня это что как вы'],
+  ['bg', 'и на се да не съм ми моля искам трябва имам това е ли'],
+])
+
+/** The language with the most stopword hits, or null on no hits or a tie. */
+const byStopwords = (text: string, table: Stopwords): SupportedLanguage | null => {
   const words = normalizeText(text).split(' ')
   let best: SupportedLanguage | null = null
   let bestScore = 0
   let tied = false
-  for (const [language, stopwords] of STOPWORDS) {
+  for (const [language, set] of table) {
     let score = 0
-    for (const word of words) if (stopwords.has(word)) score++
+    for (const word of words) if (set.has(word)) score++
     if (score > bestScore) {
       best = language
       bestScore = score
@@ -121,15 +111,139 @@ export const guessLanguage = (text: string): SupportedLanguage | null => {
   return tied ? null : best
 }
 
-// Other codes for our languages: ISO 639-2/3 codes, Filipino, Chinese varieties.
+// Letters only Vietnamese uses (horn, hook above, dot below, d with stroke). Shared accents such
+// as "ê" or "ô" are left out so French and Portuguese don't look Vietnamese.
+const VIETNAMESE_LETTERS = /[ơưđạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/iu
+
+// Scripts used by one board language.
+const SINGLE_LANGUAGE_SCRIPTS: ReadonlyArray<readonly [RegExp, SupportedLanguage]> = [
+  [/\p{Script=Hangul}/u, 'ko'],
+  [/\p{Script=Hebrew}/u, 'he'],
+  [/\p{Script=Gurmukhi}/u, 'pa'],
+  [/\p{Script=Gujarati}/u, 'gu'],
+  [/\p{Script=Oriya}/u, 'or'],
+  [/\p{Script=Tamil}/u, 'ta'],
+  [/\p{Script=Telugu}/u, 'te'],
+  [/\p{Script=Kannada}/u, 'kn'],
+  [/\p{Script=Malayalam}/u, 'ml'],
+  [/\p{Script=Thai}/u, 'th'],
+  [/\p{Script=Armenian}/u, 'hy'],
+  [/\p{Script=Greek}/u, 'el'],
+]
+
+// Shared scripts, told apart by letters or characters only one language uses.
+const CANTONESE_CHARACTERS = /[嘅咗唔喺嚟啲冇嘢佢哋係咩乜揾搵睇畀噉嗰]/u
+const URDU_LETTERS = /[ٹڈڑںےۓھ]/u
+const PERSIAN_LETTERS = /[پچژگکی]/u
+const ASSAMESE_LETTERS = /[ৰৱ]/u
+const KAZAKH_LETTERS = /[әғқңөұүһ]/iu
+const MACEDONIAN_LETTERS = /[ѓќѕљњџј]/iu
+const UKRAINIAN_LETTERS = /[іїєґ]/iu
+const RUSSIAN_LETTERS = /[ыэё]/iu
+
+/**
+ * Best-effort guess of the language of a short patient message: by script first, then by
+ * distinctive letters within a shared script, then by stopwords. When a shared script can't be
+ * told apart, the most-used language wins (Chinese, Arabic, Hindi, Bengali, Russian).
+ * Returns null when there is no signal (e.g. a single unknown Latin-script word) or a tie.
+ */
+export const guessLanguage = (text: string): SupportedLanguage | null => {
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'ja'
+  for (const [script, language] of SINGLE_LANGUAGE_SCRIPTS) if (script.test(text)) return language
+  if (/\p{Script=Han}/u.test(text)) return CANTONESE_CHARACTERS.test(text) ? 'yue' : 'zh'
+  if (/\p{Script=Arabic}/u.test(text)) {
+    if (URDU_LETTERS.test(text)) return 'ur'
+    return PERSIAN_LETTERS.test(text) ? 'fa' : 'ar'
+  }
+  if (/\p{Script=Devanagari}/u.test(text)) return byStopwords(text, DEVANAGARI_STOPWORDS) ?? 'hi'
+  if (/\p{Script=Bengali}/u.test(text)) return ASSAMESE_LETTERS.test(text) ? 'as' : 'bn'
+  if (/\p{Script=Cyrillic}/u.test(text)) {
+    if (KAZAKH_LETTERS.test(text)) return 'kk'
+    if (MACEDONIAN_LETTERS.test(text)) return 'mk'
+    if (UKRAINIAN_LETTERS.test(text)) return 'uk'
+    if (RUSSIAN_LETTERS.test(text)) return 'ru'
+    return byStopwords(text, CYRILLIC_STOPWORDS) ?? 'ru'
+  }
+  if (VIETNAMESE_LETTERS.test(text)) return 'vi'
+  return byStopwords(text, LATIN_STOPWORDS)
+}
+
+// Other codes for our languages: legacy and ISO 639-2/3 codes, macrolanguage members, and close
+// relatives we answer in the nearest board language (Croatian and Serbian in Bosnian).
 const CODE_ALIASES: Readonly<Record<string, SupportedLanguage>> = {
   fil: 'tl',
   tgl: 'tl',
-  hat: 'ht',
   cmn: 'zh',
-  yue: 'zh',
   zho: 'zh',
   chi: 'zh',
+  nb: 'no',
+  nn: 'no',
+  nob: 'no',
+  nno: 'no',
+  nor: 'no',
+  iw: 'he',
+  heb: 'he',
+  in: 'id',
+  ind: 'id',
+  mo: 'ro',
+  ron: 'ro',
+  rum: 'ro',
+  hr: 'bs',
+  hrv: 'bs',
+  sr: 'bs',
+  srp: 'bs',
+  sh: 'bs',
+  bos: 'bs',
+  zsm: 'ms',
+  msa: 'ms',
+  may: 'ms',
+  pan: 'pa',
+  guj: 'gu',
+  ben: 'bn',
+  asm: 'as',
+  tam: 'ta',
+  tel: 'te',
+  kan: 'kn',
+  mal: 'ml',
+  mar: 'mr',
+  nep: 'ne',
+  ori: 'or',
+  ory: 'or',
+  urd: 'ur',
+  fas: 'fa',
+  per: 'fa',
+  prs: 'fa',
+  ell: 'el',
+  gre: 'el',
+  tha: 'th',
+  tur: 'tr',
+  ukr: 'uk',
+  hye: 'hy',
+  arm: 'hy',
+  kaz: 'kk',
+  swa: 'sw',
+  swh: 'sw',
+  swe: 'sv',
+  dan: 'da',
+  fin: 'fi',
+  est: 'et',
+  lav: 'lv',
+  lit: 'lt',
+  mkd: 'mk',
+  mac: 'mk',
+  isl: 'is',
+  ice: 'is',
+  hun: 'hu',
+  ces: 'cs',
+  cze: 'cs',
+  slk: 'sk',
+  slo: 'sk',
+  slv: 'sl',
+  bul: 'bg',
+  cat: 'ca',
+  glg: 'gl',
+  afr: 'af',
+  aze: 'az',
   ara: 'ar',
   kor: 'ko',
   vie: 'vi',
@@ -149,59 +263,45 @@ const CODE_ALIASES: Readonly<Record<string, SupportedLanguage>> = {
   dut: 'nl',
 }
 
-/** "zh-CN" -> "zh", "pt-BR" -> "pt", "fil" -> "tl"; null when it isn't one of our languages. */
+/**
+ * "zh-CN" -> "zh", "zh-HK" -> "yue", "pt-BR" -> "pt", "fil" -> "tl", "nb" -> "no", "iw" -> "he";
+ * null when it isn't one of our languages.
+ */
 export const canonicalLanguage = (code: string): SupportedLanguage | null => {
-  const primary = code.trim().toLowerCase().split(/[-_]/)[0] ?? ''
+  const parts = code.trim().toLowerCase().split(/[-_]/)
+  const primary = parts[0] ?? ''
+  // Chinese as used in Hong Kong and Macau is spoken Cantonese.
+  if (primary === 'zh' && parts.some((part) => part === 'hk' || part === 'mo')) return 'yue'
   const resolved = CODE_ALIASES[primary] ?? primary
   return isSupportedLanguage(resolved) ? resolved : null
 }
 
-// Language names (English and native) a model might write instead of a code.
-const LANGUAGE_NAMES: ReadonlyMap<string, SupportedLanguage> = new Map(
-  (
+// Language names a model or transcriber might write instead of a code: every board label and
+// native label, plus a few common alternatives.
+const LANGUAGE_NAMES: ReadonlyMap<string, SupportedLanguage> = new Map([
+  ...LANGUAGES.flatMap((language) => [
+    [normalizeText(language.label), language.code] as const,
+    [normalizeText(language.nativeLabel), language.code] as const,
+  ]),
+  ...(
     [
-      ['english', 'en'],
-      ['spanish', 'es'],
-      ['espanol', 'es'],
-      ['chinese', 'zh'],
-      ['mandarin', 'zh'],
-      ['cantonese', 'zh'],
-      ['中文', 'zh'],
       ['tagalog', 'tl'],
-      ['filipino', 'tl'],
       ['pilipino', 'tl'],
-      ['haitian creole', 'ht'],
-      ['haitian', 'ht'],
-      ['creole', 'ht'],
-      ['kreyol', 'ht'],
-      ['kreyol ayisyen', 'ht'],
-      ['portuguese', 'pt'],
-      ['portugues', 'pt'],
-      ['russian', 'ru'],
-      ['русский', 'ru'],
-      ['arabic', 'ar'],
-      ['العربية', 'ar'],
-      ['hindi', 'hi'],
-      ['हिन्दी', 'hi'],
-      ['korean', 'ko'],
-      ['한국어', 'ko'],
-      ['vietnamese', 'vi'],
-      ['tieng viet', 'vi'],
-      ['polish', 'pl'],
-      ['polski', 'pl'],
-      ['french', 'fr'],
-      ['francais', 'fr'],
-      ['german', 'de'],
-      ['deutsch', 'de'],
-      ['japanese', 'ja'],
-      ['日本語', 'ja'],
-      ['italian', 'it'],
-      ['italiano', 'it'],
-      ['dutch', 'nl'],
-      ['nederlands', 'nl'],
+      ['mandarin', 'zh'],
+      ['中文', 'zh'],
+      ['繁體中文', 'zh'],
+      ['castilian', 'es'],
+      ['castellano', 'es'],
+      ['farsi', 'fa'],
+      ['bokmal', 'no'],
+      ['nynorsk', 'no'],
+      ['oriya', 'or'],
+      ['croatian', 'bs'],
+      ['serbian', 'bs'],
+      ['moldovan', 'ro'],
     ] as const
-  ).map(([name, code]) => [normalizeText(name), code]),
-)
+  ).map(([name, code]) => [normalizeText(name), code] as const),
+])
 
 /**
  * Clean a language code from a model or transcriber ("es", "zh-CN", "fil", "Spanish") into a

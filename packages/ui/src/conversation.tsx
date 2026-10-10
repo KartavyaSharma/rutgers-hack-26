@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { cn, focusRing, pressable } from './cn'
 import { Icon, type IconName } from './icon'
+import { RequestPanel } from './request-panel'
 
 /** Something the voice helper did, shown as a chip under its reply. Never names a team. */
 export interface ConversationAction {
@@ -155,9 +156,9 @@ export type VoiceStatus = 'connecting' | 'listening' | 'thinking' | 'speaking' |
 
 const STATUS_WORDS: Record<VoiceStatus, string> = {
   connecting: 'Getting ready…',
-  listening: "I'm listening… Tap when you're done",
+  listening: "I'm listening · Say what you need.",
   thinking: 'Thinking…',
-  speaking: "Speaking… Tap when you're done",
+  speaking: 'Speaking…',
   ended: 'Finished. Tap to talk again',
 }
 
@@ -205,7 +206,11 @@ export interface ConversationPanelProps extends ConversationProps {
   onPress: () => void
 }
 
-/** The "Make a request" card while a voice conversation runs: transcript above, mic status below. */
+/**
+ * The "Make a request" card while a voice conversation runs. Before anything is said it is the
+ * listening view (MR6Loading: the mic with spreading rings, "I'm listening / Say what you need."),
+ * then the transcript as bubbles with the mic status below.
+ */
 export function ConversationPanel({
   items,
   emptyText,
@@ -213,6 +218,15 @@ export function ConversationPanel({
   onPress,
   className,
 }: ConversationPanelProps) {
+  if (items.length === 0) {
+    return (
+      <RequestPanel
+        state={status === 'ended' ? 'idle' : status === 'connecting' ? 'connecting' : 'listening'}
+        onPress={onPress}
+        {...(className ? { className } : {})}
+      />
+    )
+  }
   return (
     <section
       aria-label="Make a request"

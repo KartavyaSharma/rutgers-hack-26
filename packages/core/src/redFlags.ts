@@ -411,33 +411,6 @@ const WORD_PATTERNS: ReadonlyArray<readonly [SupportedLanguage, PatternTable]> =
     },
   ],
   [
-    'ht',
-    {
-      unresponsive: ['endispoze', 'pedi konesans', 'san konesans'],
-      breathing: [
-        '(mwen|m) pa (ka|kapab) respire',
-        'mpa (ka|kapab) respire',
-        'difikilte pou respire',
-        'kout souf',
-        'souf mwen kout',
-      ],
-      choking: ['(m ap|map|mwen ap) toufe', 'toufe'],
-      chest_pain: ['doule nan pwatrin', 'pwatrin (mwen )?(ap )?fe (mwen )?mal', 'kriz kadyak'],
-      stroke_signs: [
-        'konjesyon serebral',
-        'estwok',
-        'figi mwen (tode|kwochi)',
-        '(mwen|m) pa ka bouje (bra|janm|men) mwen',
-      ],
-      bleeding: ['(m ap|map|mwen ap) senyen', 'senyen anpil', 'pedi san'],
-      self_harm: ['(mwen|m) vle mouri', 'touye tet mwen', 'swisid'],
-      // Only at the start: "telefon mwen tonbe" (my phone fell) must not match.
-      fall: ['(?<![a-z] )(mwen |m ?)(sot |fek )?tonbe'],
-      severe_pain: ['doule (a )?(twop|grav)', '(m ap|map) soufri anpil'],
-      emergency: ['anmwe', '(?<!pa yon )ijans'],
-    },
-  ],
-  [
     'vi',
     {
       unresponsive: ['bat tinh', 'ngat xiu', 'bi (ngat|xiu)', 'hon me'],
@@ -706,8 +679,9 @@ const COMPILED: ReadonlyArray<CompiledPattern> = RED_FLAG_CATEGORIES.flatMap((ca
 
 /**
  * Look for red-flag phrases (chest pain, can't breathe, fell, bleeding, choking, stroke signs,
- * unconscious, severe pain, suicidal, allergic reaction, seizure, ...) in the 12 room languages
- * (en es zh tl ht pt ru ar hi ko vi pl) plus fr, de, ja, it, nl. Returns null when nothing matches.
+ * unconscious, severe pain, suicidal, allergic reaction, seizure, ...) in 16 of the board languages
+ * (en es zh tl pt ru ar hi ko vi pl fr de ja it nl). The other board languages have no phrase list
+ * yet: Jev and the LLM router still catch clinical content there. Returns null when nothing matches.
  */
 export const detectRedFlag = (text: string): RedFlagMatch | null => {
   const normalized = normalizeText(text)
