@@ -138,7 +138,7 @@ describe('new room languages', () => {
     expect(patientMessage('sent', 'fil')).toBe(patientMessage('sent', 'tl'))
     expect(patientMessage('sent', 'ar-EG')).toBe(patientMessage('sent', 'ar'))
     expect(patientMessage('sent', 'auto')).toBe(patientMessage('sent', 'en'))
-    expect(patientMessage('sent', 'yo')).toBe(patientMessage('sent', 'en'))
+    expect(patientMessage('sent', 'xh')).toBe(patientMessage('sent', 'en'))
     expect(patientMessage('sent', 'sw')).toBe('Imetumwa. Mtu anakuja.')
   })
 

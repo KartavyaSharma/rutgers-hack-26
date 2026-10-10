@@ -50,7 +50,7 @@ import {
 } from './llm'
 import { PhraseCache } from './phrases'
 import { buildInstructions, NOTE_PREFIX } from './prompt'
-import { MaiSTT } from './stt-mai'
+import { ScribeSTT } from './stt'
 import { type Announcement, BellTools, EmergencyNotes } from './tools'
 
 // The job process inherits the parent's env; loading again only matters when this file is
@@ -455,13 +455,20 @@ function speechModels(env: AgentEnv, language: LanguagePreference, onLost: () =>
 }
 
 /**
- * MAI-Transcribe (AI Gateway) detects the language itself; a room language becomes a hint
- * where MAI has it. Deepgram Flux is the fallback; it only gets a hint for a Flux language.
- * Either way the STT's end of utterance ends the turn (turnDetection 'stt').
+ * ElevenLabs Scribe transcribes, with MAI-Transcribe (AI Gateway) as its backup (see stt.ts); both
+ * detect the language, and a room language becomes a hint where each has it. Deepgram Flux is the
+ * alternative (STT_PROVIDER=deepgram); it only gets a hint for a Flux language. Either way the
+ * STT's end of utterance ends the turn (turnDetection 'stt').
  */
 function speechToText(env: AgentEnv, language: LanguagePreference, onLost: () => void): stt.STT {
-  if (env.stt.provider === 'mai') {
-    return new MaiSTT({ apiKey: env.stt.aiGatewayApiKey, language, onLost })
+  if (env.stt.provider === 'scribe') {
+    const { backup } = env.stt
+    return new ScribeSTT({
+      scribe: { apiKey: env.stt.apiKey, model: env.stt.model, stallMs: env.stt.stallMs },
+      ...(backup.kind === 'mai' ? { mai: { apiKey: backup.aiGatewayApiKey } } : {}),
+      language,
+      onLost,
+    })
   }
   const fluxHint = (FLUX_LANGUAGES as readonly string[]).includes(language)
   return new deepgram.STTv2({
@@ -553,7 +560,7 @@ export default defineAgent({
     const env = agentEnv()
     const api = { appUrl: env.appUrl, agentSharedSecret: env.agentSharedSecret }
     const roomLogger = log().child({ roomId: job.roomId })
-    // MAI could not transcribe something the patient said: ask them to repeat (set once the
+    // Speech could not be transcribed: ask them to repeat (set once the
     // session exists).
     let onLost = () => {}
     const models = speechModels(env, job.language, () => onLost())
@@ -647,7 +654,7 @@ export default defineAgent({
         roomId: job.roomId,
         mode: job.mode,
         language: job.language,
-        stt: env.stt.provider,
+        stt: env.stt.provider === 'scribe' ? `scribe+${env.stt.backup.kind}` : env.stt.provider,
         noiseCancellation: 'noiseCancellation' in inputOptions ? 'bvc' : 'off',
         llm: `${env.llm.provider}:${env.llm.model}`,
         reasoningEffort: env.cerebrasAgentReasoningEffort,

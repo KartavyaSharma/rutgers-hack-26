@@ -2,16 +2,10 @@ import { stt } from '@livekit/agents'
 import type { TranscriptionStreamPart } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 import { interruptionWords } from './interruptions'
-import { elevenLabsLanguage } from './languages'
-import {
-  boardLanguage,
-  isShortUtterance,
-  MaiSegmenter,
-  type MaiTranscribers,
-  maiLanguageHint,
-  pcmToWav,
-  resolveUtteranceLanguage,
-} from './stt-mai'
+import { boardLanguage, elevenLabsLanguage, scribeLanguageHint } from './languages'
+import type { ScribeResult, ScribeTranscriber } from './scribe'
+import { isShortUtterance, resolveUtteranceLanguage, Segmenter } from './stt'
+import { MaiBackup, type MaiTranscribers, maiLanguageHint, pcmToWav } from './stt-mai'
 
 const { START_OF_SPEECH, INTERIM_TRANSCRIPT, FINAL_TRANSCRIPT, END_OF_SPEECH } = stt.SpeechEventType
 
@@ -51,19 +45,42 @@ function fakeMai(
   return { stream, batch } satisfies MaiTranscribers
 }
 
+const NOOP_LOGGER = { debug() {}, info() {}, warn() {} }
+
+/** A fake Scribe; by default down, so MAI (the backup) gives every final. */
+function fakeScribe(result: Promise<ScribeResult | undefined> = Promise.resolve(undefined)) {
+  return {
+    usable: false,
+    begin: vi.fn(),
+    audio: vi.fn<(pcm: Int16Array) => void>(),
+    commit: vi.fn(() => result),
+    cancel: vi.fn(),
+    close: vi.fn(),
+  } satisfies ScribeTranscriber
+}
+
 function harness(
-  transcribers: MaiTranscribers,
-  options: { language?: string; roomLanguage?: string } = {},
+  transcribers: MaiTranscribers | undefined,
+  options: {
+    language?: string
+    roomLanguage?: string
+    scribe?: ScribeTranscriber
+    stallMs?: number
+  } = {},
 ) {
   const events: stt.SpeechEvent[] = []
   const onRepeatedFailure = vi.fn()
   const onLost = vi.fn()
-  const segmenter = new MaiSegmenter({
-    transcribers,
+  const { language, scribe = fakeScribe(), ...rest } = options
+  const segmenter = new Segmenter({
+    scribe,
+    ...(transcribers
+      ? { mai: new MaiBackup({ transcribers, language, logger: NOOP_LOGGER }) }
+      : {}),
     emit: (event) => events.push(event),
     onRepeatedFailure,
     onLost,
-    ...options,
+    ...rest,
   })
   /** [type, text, language] per event, for compact assertions. */
   const summary = () =>
@@ -77,17 +94,20 @@ function harness(
 const pcm = (samples = 320) => new Int16Array(samples).fill(1000)
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-describe('MaiSegmenter', () => {
+describe('Segmenter with Scribe down (MAI gives the final)', () => {
   it('maps partials to START + interims, then the batch transcript to FINAL + END', async () => {
     const mai = fakeMai(
       [
-        session([
-          { type: 'transcript-partial', text: 'Hola' },
-          { type: 'transcript-partial', text: 'Hola, me' },
-          { type: 'transcript-delta', delta: 'Hola' },
-          { type: 'transcript-partial', text: ', ¿me traes agua?' },
-          { type: 'transcript-final', text: 'Hola, ¿me traes agua?' },
-        ]),
+        session(
+          [
+            { type: 'transcript-partial', text: 'Hola' },
+            { type: 'transcript-partial', text: 'Hola, me' },
+            { type: 'transcript-delta', delta: 'Hola' },
+            { type: 'transcript-partial', text: ', ¿me traes agua?' },
+            { type: 'transcript-final', text: 'Hola, ¿me traes agua?' },
+          ],
+          new Promise(() => {}),
+        ), // still open at the commit: the batch call races it
       ],
       [async () => ({ text: 'Hola, ¿me traes agua?', language: 'es' })],
     )
@@ -265,7 +285,7 @@ describe('MaiSegmenter', () => {
   })
 })
 
-describe('MaiSegmenter batch retries (never drop an utterance silently)', () => {
+describe('MAI backup retries (never drop an utterance silently)', () => {
   /** A batch call that only ends when aborted, like a real request. */
   const untilAborted: MaiTranscribers['batch'] = ({ abortSignal }) =>
     new Promise((_, reject) => {
@@ -363,7 +383,7 @@ describe('MaiSegmenter batch retries (never drop an utterance silently)', () => 
   })
 })
 
-describe('MaiSegmenter speculative batch and race', () => {
+describe('MAI backup speculative batch and race', () => {
   it('starts the batch call during the pause and uses it at commit', async () => {
     const mai = fakeMai([session([])], [async () => ({ text: 'A blanket', language: 'en' })])
     const { segmenter, summary } = harness(mai)
@@ -528,6 +548,94 @@ describe('interruptionWords', () => {
   })
 })
 
+const resolveAfter = <T>(ms: number, value: T) =>
+  new Promise<T>((resolve) => setTimeout(() => resolve(value), ms))
+const up = (scribe: ReturnType<typeof fakeScribe>) => Object.assign(scribe, { usable: true })
+
+describe('Segmenter, Scribe first', () => {
+  it('feeds Scribe the same audio, commits with the utterance and takes its transcript', async () => {
+    const scribe = up(fakeScribe(Promise.resolve({ text: 'Necesito agua', language: 'es' })))
+    const mai = fakeMai([session([], new Promise(() => {}))], [])
+    const { segmenter, summary } = harness(mai, { scribe })
+
+    segmenter.start([new Int16Array([1])])
+    segmenter.speculate() // Scribe is up: no early MAI call
+    segmenter.audio(new Int16Array([2]))
+    await segmenter.end()
+
+    expect(scribe.audio.mock.calls.map(([chunk]) => Array.from(chunk))).toEqual([[1], [2]])
+    expect(scribe.commit).toHaveBeenCalledTimes(1)
+    expect(mai.batch).not.toHaveBeenCalled()
+    expect(summary().at(-2)).toEqual([FINAL_TRANSCRIPT, 'Necesito agua', 'es'])
+  })
+
+  it('asks MAI when Scribe stalls, and a late Scribe transcript still counts', async () => {
+    const stalled = up(fakeScribe(resolveAfter(2000, { text: 'late', language: 'en' })))
+    const mai = fakeMai([session([])], [async () => ({ text: 'A pillow', language: 'en' })])
+    const first = harness(mai, { scribe: stalled, stallMs: 50 })
+    first.segmenter.start([pcm()])
+    await first.segmenter.end()
+    expect(first.summary().at(-2)).toEqual([FINAL_TRANSCRIPT, 'A pillow', 'en'])
+
+    const late = up(fakeScribe(resolveAfter(100, { text: 'Some water', language: 'en' })))
+    const slowMai = fakeMai(
+      [session([])],
+      [() => resolveAfter(1000, { text: 'x', language: 'en' })],
+    )
+    const second = harness(slowMai, { scribe: late, stallMs: 50 })
+    second.segmenter.start([pcm()])
+    await second.segmenter.end()
+    expect(second.summary().at(-2)).toEqual([FINAL_TRANSCRIPT, 'Some water', 'en'])
+  })
+
+  it('asks MAI when Scribe heard no words; both empty is noise, not lost', async () => {
+    const empty = up(fakeScribe(Promise.resolve({ text: '', language: undefined })))
+    const mai = fakeMai(
+      [session([]), session([])],
+      [async () => ({ text: 'Water' }), async () => ({ text: '' })],
+    )
+    const { segmenter, summary, onLost } = harness(mai, { scribe: empty })
+    segmenter.start([pcm()])
+    await segmenter.end()
+    expect(summary().at(-2)?.[1]).toBe('Water')
+    segmenter.start([pcm()])
+    await segmenter.end()
+    expect(summary()).toHaveLength(3)
+    expect(onLost).not.toHaveBeenCalled()
+  })
+
+  it('takes MAI within 400 ms when Scribe wrote the wrong script (Gujarati room, Devanagari "hi")', async () => {
+    const scribe = up(fakeScribe(Promise.resolve({ text: 'मुझे पानी चाहिए', language: 'hi' })))
+    const mai = fakeMai(
+      [session([])],
+      [() => resolveAfter(150, { text: 'મને પાણી જોઈએ છે', language: 'gu' })],
+    )
+    const { segmenter, summary } = harness(mai, { scribe, roomLanguage: 'gu' })
+    segmenter.start([pcm()])
+    await segmenter.end()
+    expect(summary().at(-2)).toEqual([FINAL_TRANSCRIPT, 'મને પાણી જોઈએ છે', 'gu'])
+  })
+
+  it('keeps Scribe when MAI is not in within 400 ms of a script mismatch', async () => {
+    const scribe = up(fakeScribe(Promise.resolve({ text: 'मुझे पानी चाहिए', language: 'hi' })))
+    const mai = fakeMai([session([])], [() => new Promise(() => {})])
+    const { segmenter, summary } = harness(mai, { scribe, roomLanguage: 'gu' })
+    segmenter.start([pcm()])
+    const started = performance.now()
+    await segmenter.end()
+    expect(summary().at(-2)?.[1]).toBe('मुझे पानी चाहिए')
+    expect(performance.now() - started).toBeGreaterThanOrEqual(390)
+  })
+
+  it('without a backup, asks the patient to repeat when Scribe is down', async () => {
+    const { segmenter, events, onLost } = harness(undefined)
+    segmenter.start([pcm()])
+    await segmenter.end()
+    expect(events).toEqual([])
+    expect(onLost).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('language codes', () => {
   it('maps room languages to MAI hints, only for verified codes', () => {
     expect(maiLanguageHint('auto')).toBeUndefined()
@@ -548,7 +656,18 @@ describe('language codes', () => {
     expect(elevenLabsLanguage('xx')).toBeUndefined()
   })
 
-  it('maps MAI languages to board codes', () => {
+  it('maps board languages to Scribe codes (2-letter ny and ln are refused)', () => {
+    expect(scribeLanguageHint('auto')).toBeUndefined()
+    expect(scribeLanguageHint('hr')).toBe('hr')
+    expect(scribeLanguageHint('tl')).toBe('fil')
+    expect(scribeLanguageHint('ny')).toBe('nya')
+    expect(scribeLanguageHint('ceb')).toBe('ceb')
+    expect(scribeLanguageHint('xx')).toBeUndefined()
+  })
+
+  it("maps providers' languages to board codes", () => {
+    expect(boardLanguage('nya')).toBe('ny')
+    expect(boardLanguage('cym')).toBe('cy')
     expect(boardLanguage('fil')).toBe('tl')
     expect(boardLanguage('nb')).toBe('no')
     expect(boardLanguage('iw')).toBe('he')

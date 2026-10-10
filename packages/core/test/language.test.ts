@@ -74,8 +74,12 @@ describe('language codes', () => {
     ['yue', 'yue'],
     ['yue-HK', 'yue'],
     ['pa-IN', 'pa'],
-    ['hr', 'bs'],
-    ['sr-Latn', 'bs'],
+    ['hr', 'hr'],
+    ['hrv', 'hr'],
+    ['srp', 'sr'],
+    ['cym', 'cy'],
+    ['zho', 'zh'],
+    ['sr-Latn', 'sr'],
     ['mo', 'ro'],
     ['fas', 'fa'],
     ['ory', 'or'],
@@ -86,8 +90,8 @@ describe('language codes', () => {
 
   it('returns null for languages we have no strings for', () => {
     expect(canonicalLanguage('ht')).toBeNull()
-    expect(canonicalLanguage('yo')).toBeNull()
-    expect(replyLanguage('yo')).toBe('en')
+    expect(canonicalLanguage('xh')).toBeNull()
+    expect(replyLanguage('xh')).toBe('en')
     expect(replyLanguage('auto')).toBe('en')
   })
 
@@ -145,12 +149,23 @@ describe('script detection for the board languages', () => {
     'bg',
     'mk',
     'kk',
+    'be',
+    'sr',
+    'ky',
+    'mn',
+    'tg',
+    'ka',
+    'my',
+    'ps',
+    'sd',
   ] as const
   const allLines = (code: string) =>
     PATIENT_MESSAGE_KEYS.map((key) => patientMessage(key, code)).join(' ')
 
   it('covers every non-Latin board language', () => {
-    const latin = LANGUAGES.filter((l) => /^[\p{Script=Latin}\s.,'()-]+$/u.test(l.nativeLabel))
+    const latin = LANGUAGES.filter((l) =>
+      /^[\p{Script=Latin}\p{Lm}\s.,'()-]+$/u.test(l.nativeLabel),
+    )
     expect(NON_LATIN.length + latin.length).toBe(LANGUAGES.length)
   })
 
@@ -179,7 +194,7 @@ describe('script detection for the board languages', () => {
     ['我想要水', 'zh'],
     ['我想要啲水', 'yue'],
     ['Мені потрібна вода', 'uk'],
-    ['Ми треба некој да дојде', 'mk'],
+    ['Ќе дојде ли некој?', 'mk'],
     ['Ми трябва вода', 'bg'],
     ['Маған су керек', 'kk'],
   ])('%j -> %s', (text, code) => {

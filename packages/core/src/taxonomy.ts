@@ -200,11 +200,11 @@ export const REQUESTS_CANCELLED_RPC = 'bell.requests_cancelled'
 export const AGENT_NAME = 'bell-agent'
 
 // ---------------------------------------------------------------------------
-// Languages. Auto-detect is the default (MAI-Transcribe detects the spoken language). A chosen
-// language is one room setting that flows to the speech-to-text hint, the reply language and the
-// text-to-speech language. These are the 60 languages MAI-Transcribe-2 supports (Microsoft's
-// model card, "Supported languages"), which is also the chosen "Change Language" screen (search,
-// "Most used", then A to Z). Filipino uses the code 'tl'; Norwegian is Bokmål ('no', MAI 'nb').
+// Languages. Auto-detect is the default. A chosen language is one room setting that flows to the
+// speech-to-text hint, the reply language and the text-to-speech language. These are the 85
+// languages ElevenLabs Scribe v2 (speech-to-text) transcribes AND eleven_v4_turbo (the voice) can
+// speak; Scribe languages the voice can't speak are left out. Shown on the "Change Language"
+// screen (search, "Most used", then A to Z). Filipino uses the code 'tl'; Norwegian is 'no'.
 // ---------------------------------------------------------------------------
 
 export const LANGUAGES = [
@@ -268,6 +268,31 @@ export const LANGUAGES = [
   { code: 'uk', label: 'Ukrainian', nativeLabel: 'Українська' },
   { code: 'ur', label: 'Urdu', nativeLabel: 'اردو', rtl: true },
   { code: 'vi', label: 'Vietnamese', nativeLabel: 'Tiếng Việt' },
+  { code: 'ast', label: 'Asturian', nativeLabel: 'Asturianu' },
+  { code: 'be', label: 'Belarusian', nativeLabel: 'Беларуская' },
+  { code: 'my', label: 'Burmese', nativeLabel: 'မြန်မာ' },
+  { code: 'ceb', label: 'Cebuano', nativeLabel: 'Cebuano' },
+  { code: 'ny', label: 'Chichewa', nativeLabel: 'Chichewa' },
+  { code: 'hr', label: 'Croatian', nativeLabel: 'Hrvatski' },
+  { code: 'ka', label: 'Georgian', nativeLabel: 'ქართული' },
+  { code: 'ha', label: 'Hausa', nativeLabel: 'Hausa' },
+  { code: 'ga', label: 'Irish', nativeLabel: 'Gaeilge' },
+  { code: 'jv', label: 'Javanese', nativeLabel: 'Basa Jawa' },
+  { code: 'ky', label: 'Kyrgyz', nativeLabel: 'Кыргызча' },
+  { code: 'ln', label: 'Lingala', nativeLabel: 'Lingála' },
+  { code: 'lb', label: 'Luxembourgish', nativeLabel: 'Lëtzebuergesch' },
+  { code: 'mt', label: 'Maltese', nativeLabel: 'Malti' },
+  { code: 'mi', label: 'Māori', nativeLabel: 'Te Reo Māori' },
+  { code: 'mn', label: 'Mongolian', nativeLabel: 'Монгол' },
+  { code: 'oc', label: 'Occitan', nativeLabel: 'Occitan' },
+  { code: 'ps', label: 'Pashto', nativeLabel: 'پښتو', rtl: true },
+  { code: 'sr', label: 'Serbian', nativeLabel: 'Српски' },
+  { code: 'sd', label: 'Sindhi', nativeLabel: 'سنڌي', rtl: true },
+  { code: 'so', label: 'Somali', nativeLabel: 'Soomaali' },
+  { code: 'tg', label: 'Tajik', nativeLabel: 'Тоҷикӣ' },
+  { code: 'uz', label: 'Uzbek', nativeLabel: 'Oʻzbekcha' },
+  { code: 'cy', label: 'Welsh', nativeLabel: 'Cymraeg' },
+  { code: 'yo', label: 'Yoruba', nativeLabel: 'Yorùbá' },
 ] as const
 
 /** The "Most used" row on the language screen, in board order. */

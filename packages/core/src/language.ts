@@ -129,22 +129,33 @@ const SINGLE_LANGUAGE_SCRIPTS: ReadonlyArray<readonly [RegExp, SupportedLanguage
   [/\p{Script=Thai}/u, 'th'],
   [/\p{Script=Armenian}/u, 'hy'],
   [/\p{Script=Greek}/u, 'el'],
+  [/\p{Script=Georgian}/u, 'ka'],
+  [/\p{Script=Myanmar}/u, 'my'],
 ]
 
 // Shared scripts, told apart by letters or characters only one language uses.
 const CANTONESE_CHARACTERS = /[嘅咗唔喺嚟啲冇嘢佢哋係咩乜揾搵睇畀噉嗰]/u
+const SINDHI_LETTERS = /[ٻڀٺٽٿڄڃڇڊڌڍڏڙڦڪڱڳڻ]/u
+const PASHTO_LETTERS = /[ټډړږښګڼۍې]/u
 const URDU_LETTERS = /[ٹڈڑںےۓھ]/u
 const PERSIAN_LETTERS = /[پچژگکی]/u
 const ASSAMESE_LETTERS = /[ৰৱ]/u
-const KAZAKH_LETTERS = /[әғқңөұүһ]/iu
-const MACEDONIAN_LETTERS = /[ѓќѕљњџј]/iu
+const TAJIK_LETTERS = /[ӣӯҳҷ]/iu
+const KAZAKH_LETTERS = /[әұһғқ]/iu
+const KYRGYZ_LETTERS = /[ң]/iu
+const MONGOLIAN_LETTERS = /[өү]/iu
+const BELARUSIAN_LETTERS = /[ў]/iu
+const SERBIAN_LETTERS = /[ђћ]/iu
+const MACEDONIAN_LETTERS = /[ѓќѕ]/iu
+// Shared by Serbian and Macedonian: Serbian, the more widely used, wins.
+const SOUTH_SLAVIC_LETTERS = /[јљњџ]/iu
 const UKRAINIAN_LETTERS = /[іїєґ]/iu
 const RUSSIAN_LETTERS = /[ыэё]/iu
 
 /**
  * Best-effort guess of the language of a short patient message: by script first, then by
  * distinctive letters within a shared script, then by stopwords. When a shared script can't be
- * told apart, the most-used language wins (Chinese, Arabic, Hindi, Bengali, Russian).
+ * told apart, the most-used language wins (Chinese, Arabic, Hindi, Bengali, Russian, Serbian).
  * Returns null when there is no signal (e.g. a single unknown Latin-script word) or a tie.
  */
 export const guessLanguage = (text: string): SupportedLanguage | null => {
@@ -152,14 +163,22 @@ export const guessLanguage = (text: string): SupportedLanguage | null => {
   for (const [script, language] of SINGLE_LANGUAGE_SCRIPTS) if (script.test(text)) return language
   if (/\p{Script=Han}/u.test(text)) return CANTONESE_CHARACTERS.test(text) ? 'yue' : 'zh'
   if (/\p{Script=Arabic}/u.test(text)) {
+    if (SINDHI_LETTERS.test(text)) return 'sd'
+    if (PASHTO_LETTERS.test(text)) return 'ps'
     if (URDU_LETTERS.test(text)) return 'ur'
     return PERSIAN_LETTERS.test(text) ? 'fa' : 'ar'
   }
   if (/\p{Script=Devanagari}/u.test(text)) return byStopwords(text, DEVANAGARI_STOPWORDS) ?? 'hi'
   if (/\p{Script=Bengali}/u.test(text)) return ASSAMESE_LETTERS.test(text) ? 'as' : 'bn'
   if (/\p{Script=Cyrillic}/u.test(text)) {
+    if (TAJIK_LETTERS.test(text)) return 'tg'
     if (KAZAKH_LETTERS.test(text)) return 'kk'
+    if (KYRGYZ_LETTERS.test(text)) return 'ky'
+    if (MONGOLIAN_LETTERS.test(text)) return 'mn'
+    if (BELARUSIAN_LETTERS.test(text)) return 'be'
+    if (SERBIAN_LETTERS.test(text)) return 'sr'
     if (MACEDONIAN_LETTERS.test(text)) return 'mk'
+    if (SOUTH_SLAVIC_LETTERS.test(text)) return 'sr'
     if (UKRAINIAN_LETTERS.test(text)) return 'uk'
     if (RUSSIAN_LETTERS.test(text)) return 'ru'
     return byStopwords(text, CYRILLIC_STOPWORDS) ?? 'ru'
@@ -168,8 +187,8 @@ export const guessLanguage = (text: string): SupportedLanguage | null => {
   return byStopwords(text, LATIN_STOPWORDS)
 }
 
-// Other codes for our languages: legacy and ISO 639-2/3 codes, macrolanguage members, and close
-// relatives we answer in the nearest board language (Croatian and Serbian in Bosnian).
+// Other codes for our languages: legacy and ISO 639-2/3 codes (ElevenLabs Scribe returns codes like
+// "hrv", "cym", "zho") and macrolanguage members.
 const CODE_ALIASES: Readonly<Record<string, SupportedLanguage>> = {
   fil: 'tl',
   tgl: 'tl',
@@ -188,12 +207,42 @@ const CODE_ALIASES: Readonly<Record<string, SupportedLanguage>> = {
   mo: 'ro',
   ron: 'ro',
   rum: 'ro',
-  hr: 'bs',
-  hrv: 'bs',
-  sr: 'bs',
-  srp: 'bs',
-  sh: 'bs',
   bos: 'bs',
+  hrv: 'hr',
+  sh: 'hr',
+  srp: 'sr',
+  cnr: 'sr',
+  bel: 'be',
+  mya: 'my',
+  bur: 'my',
+  nya: 'ny',
+  kat: 'ka',
+  geo: 'ka',
+  hau: 'ha',
+  gle: 'ga',
+  jav: 'jv',
+  jw: 'jv',
+  kir: 'ky',
+  lin: 'ln',
+  ltz: 'lb',
+  mlt: 'mt',
+  mri: 'mi',
+  mao: 'mi',
+  mon: 'mn',
+  khk: 'mn',
+  oci: 'oc',
+  pus: 'ps',
+  pbu: 'ps',
+  pbt: 'ps',
+  pst: 'ps',
+  snd: 'sd',
+  som: 'so',
+  tgk: 'tg',
+  uzb: 'uz',
+  uzn: 'uz',
+  cym: 'cy',
+  wel: 'cy',
+  yor: 'yo',
   zsm: 'ms',
   msa: 'ms',
   may: 'ms',
@@ -264,7 +313,8 @@ const CODE_ALIASES: Readonly<Record<string, SupportedLanguage>> = {
 }
 
 /**
- * "zh-CN" -> "zh", "zh-HK" -> "yue", "pt-BR" -> "pt", "fil" -> "tl", "nb" -> "no", "iw" -> "he";
+ * "zh-CN" -> "zh", "zh-HK" -> "yue", "pt-BR" -> "pt", "fil" -> "tl", "nb" -> "no", "iw" -> "he",
+ * "hrv" -> "hr", "cym" -> "cy";
  * null when it isn't one of our languages.
  */
 export const canonicalLanguage = (code: string): SupportedLanguage | null => {
@@ -296,8 +346,10 @@ const LANGUAGE_NAMES: ReadonlyMap<string, SupportedLanguage> = new Map([
       ['bokmal', 'no'],
       ['nynorsk', 'no'],
       ['oriya', 'or'],
-      ['croatian', 'bs'],
-      ['serbian', 'bs'],
+      ['srpski', 'sr'],
+      ['nyanja', 'ny'],
+      ['irish gaelic', 'ga'],
+      ['dari', 'fa'],
       ['moldovan', 'ro'],
     ] as const
   ).map(([name, code]) => [normalizeText(name), code] as const),

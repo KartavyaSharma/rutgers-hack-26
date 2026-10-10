@@ -28,10 +28,18 @@ export const DEFAULT_GATEWAY_AGENT_MODEL = 'alibaba/qwen3.8-27b'
 /** GATEWAY_RACE_MS: when the backup providers start racing Cerebras on the gateway; 0 = off. */
 export const DEFAULT_GATEWAY_RACE_MS = 250
 
-export const STT_PROVIDERS = ['mai', 'deepgram'] as const
+/** STT_PROVIDER: ElevenLabs Scribe (default; MAI as its backup) or Deepgram Flux. */
+export const STT_PROVIDERS = ['scribe', 'deepgram'] as const
 export type SttProvider = (typeof STT_PROVIDERS)[number]
 /** The key each speech-to-text provider needs. */
-const STT_KEYS = { mai: 'AI_GATEWAY_API_KEY', deepgram: 'DEEPGRAM_API_KEY' } as const
+const STT_KEYS = { scribe: 'ELEVEN_API_KEY', deepgram: 'DEEPGRAM_API_KEY' } as const
+/** STT_BACKUP: MAI-Transcribe through the AI Gateway behind Scribe ('mai'), or none ('off'). */
+export const STT_BACKUPS = ['mai', 'off'] as const
+export type SttBackup = (typeof STT_BACKUPS)[number]
+const MAI_KEY = 'AI_GATEWAY_API_KEY'
+export const DEFAULT_SCRIBE_MODEL = 'scribe_v2_realtime'
+/** SCRIBE_STALL_MS: how long after an utterance ends Scribe may take before MAI is asked. */
+export const DEFAULT_SCRIBE_STALL_MS = 500
 
 export const DEFAULT_ELEVEN_MODEL = 'eleven_v4_turbo'
 export const DEFAULT_APP_URL = 'http://localhost:3000'
@@ -71,14 +79,20 @@ function required(name: string): string {
   return value
 }
 
-/**
- * STT_PROVIDER ("mai" | "deepgram"). Default: MAI-Transcribe through the AI Gateway when
- * AI_GATEWAY_API_KEY is set, else Deepgram Flux.
- */
+/** STT_PROVIDER ("scribe" | "deepgram"). Default: ElevenLabs Scribe (ELEVEN_API_KEY, required anyway). */
 export function sttProvider(): SttProvider {
   const chosen = read('STT_PROVIDER')?.toLowerCase()
-  if (isSttProvider(chosen)) return chosen
-  return read(STT_KEYS.mai) ? 'mai' : 'deepgram'
+  return isSttProvider(chosen) ? chosen : 'scribe'
+}
+
+/**
+ * STT_BACKUP ("mai" | "off") behind Scribe. Default: MAI when AI_GATEWAY_API_KEY is set. MAI
+ * without that key is off (see envWarnings).
+ */
+export function sttBackup(): SttBackup {
+  const chosen = read('STT_BACKUP')?.toLowerCase()
+  if (chosen === 'off' || read(MAI_KEY) === undefined) return 'off'
+  return 'mai'
 }
 
 const isLlmProvider = (value: unknown): value is LlmProvider =>
@@ -117,6 +131,16 @@ export function envWarnings(): string[] {
       `CEREBRAS_AGENT_HEDGE_MS must be a whole number of ms (0 = off); using ${DEFAULT_CEREBRAS_AGENT_HEDGE_MS}`,
     )
   }
+  const backup = read('STT_BACKUP')?.toLowerCase()
+  if (backup !== undefined && !(STT_BACKUPS as readonly string[]).includes(backup)) {
+    warnings.push(`STT_BACKUP must be one of ${STT_BACKUPS.join(', ')}; using ${sttBackup()}`)
+  }
+  if (backup === 'mai' && read(MAI_KEY) === undefined) {
+    warnings.push(`STT_BACKUP=mai needs ${MAI_KEY}; running Scribe without a backup`)
+  }
+  if (read('SCRIBE_STALL_MS') !== undefined && readMs('SCRIBE_STALL_MS') === undefined) {
+    warnings.push(`SCRIBE_STALL_MS must be a whole number of ms; using ${DEFAULT_SCRIBE_STALL_MS}`)
+  }
   const nc = read('NOISE_CANCELLATION')?.toLowerCase()
   if (nc !== undefined && nc !== 'bvc' && nc !== 'off') {
     warnings.push('NOISE_CANCELLATION must be bvc or off; using bvc')
@@ -138,7 +162,13 @@ export function envWarnings(): string[] {
 }
 
 export type SttEnv =
-  | { provider: 'mai'; aiGatewayApiKey: string }
+  | {
+      provider: 'scribe'
+      apiKey: string
+      model: string
+      stallMs: number
+      backup: { kind: 'mai'; aiGatewayApiKey: string } | { kind: 'off' }
+    }
   | { provider: 'deepgram'; deepgramApiKey: string }
 
 /**
@@ -171,8 +201,17 @@ export function agentEnv(): AgentEnv {
   const provider = sttProvider()
   return {
     stt:
-      provider === 'mai'
-        ? { provider, aiGatewayApiKey: required(STT_KEYS.mai) }
+      provider === 'scribe'
+        ? {
+            provider,
+            apiKey: required(STT_KEYS.scribe),
+            model: read('SCRIBE_MODEL') ?? DEFAULT_SCRIBE_MODEL,
+            stallMs: readMs('SCRIBE_STALL_MS') ?? DEFAULT_SCRIBE_STALL_MS,
+            backup:
+              sttBackup() === 'mai'
+                ? { kind: 'mai', aiGatewayApiKey: required(MAI_KEY) }
+                : { kind: 'off' },
+          }
         : { provider, deepgramApiKey: required(STT_KEYS.deepgram) },
     noiseCancellation: read('NOISE_CANCELLATION')?.toLowerCase() === 'off' ? 'off' : 'bvc',
     elevenApiKey: required('ELEVEN_API_KEY'),

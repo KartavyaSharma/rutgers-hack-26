@@ -43,8 +43,8 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 | Variable | Used by | Notes |
 | --- | --- | --- |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | web, agent | voice sessions; the token endpoint returns 503 without them |
-| `AI_GATEWAY_API_KEY` | agent | speech to text: MAI-Transcribe-2 via the Vercel AI Gateway (auto language detection); the default when set |
-| `STT_PROVIDER` | agent | `mai` (default with the gateway key) or `deepgram` |
+| `AI_GATEWAY_API_KEY` | agent | backup speech to text (MAI-Transcribe-2 via the Vercel AI Gateway, also its live partials) and the conversation LLM |
+| `STT_PROVIDER` | agent | `scribe` (default: ElevenLabs Scribe v2 Realtime, uses `ELEVEN_API_KEY`) or `deepgram`; `STT_BACKUP=mai` and `SCRIBE_STALL_MS` (500) control the MAI fallback |
 | `DEEPGRAM_API_KEY` | agent | fallback speech to text, Deepgram Flux `flux-general-multi` (10 languages) |
 | `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | text to speech |
 | `ELEVEN_MODEL` | agent | `eleven_v4_turbo` (default, low latency) or `eleven_v4` (higher quality) |
@@ -59,7 +59,7 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 
 ```
 apps/web        Next.js 16 (App Router, Tailwind 4): tablet, staff dev view, API, SSE, Postgres/PGlite via Drizzle
-apps/agent      LiveKit Agents (Node): MAI-Transcribe STT -> Qwen 3.8 conversation + tools -> Jev -> web API -> ElevenLabs TTS
+apps/agent      LiveKit Agents (Node): Scribe STT (MAI backup) -> Qwen 3.8 conversation + tools -> Jev -> web API -> ElevenLabs TTS
 packages/core   classifier (Effect 4: Jev, plus the backup Qwen router), shared taxonomy/types, localized patient messages, adapter seams
 packages/ui     design tokens (tokens.css from the design system) and base components
 ```
@@ -79,14 +79,14 @@ packages/ui     design tokens (tokens.css from the design system) and base compo
   timeout over 2 s, errors, bad output or rate limits. Every path ends on the nurse, and it never rejects. Jev also
   tags each request with its group (water_food, comfort, cleaning, ...) for the tablet's icons.
 - **Language**: Auto by default: MAI-Transcribe detects what the patient speaks and the agent replies in it. The
-  tablet's Change Language screen (search, "Most used", A to Z) offers the 60 languages MAI-Transcribe-2 supports
+  tablet's Change Language screen (search, "Most used", A to Z) offers the 85 languages Scribe transcribes and the voice can speak
   as a room setting (a hint for speech-to-text, the replies and text-to-speech). Fixed spoken lines exist for all
-  60 (16 hand-written, 44 AI-translated and awaiting native review). Instant red-flag phrases cover 16 languages;
+  85 (16 hand-written, 69 AI-translated and awaiting native review). Instant red-flag phrases cover 16 languages;
   in the others, clinical requests reach the nurse through Jev and the LLM. The theme is Clay (Night is kept in the tokens for later).
 - **Voice agent**: tap to talk. The tablet gets a LiveKit token from `POST /api/livekit/token`, which dispatches the
-  agent with `{ roomId, language, mode, emergencyRequestId }`. Speech-to-text is MAI-Transcribe-2 through the Vercel
-  AI Gateway: a local VAD cuts each utterance (600 ms of silence), the streaming model gives live partials and the
-  batch model gives the final text and its language (about 1.1–1.5 s from the end of speech to the end of the turn).
+  agent with `{ roomId, language, mode, emergencyRequestId }`. Speech-to-text: a local VAD cuts each utterance (600 ms of silence); ElevenLabs Scribe v2 Realtime
+  gives the final text and language ~0.1–0.3 s after that; MAI-Transcribe-2 (Vercel AI Gateway) gives live partials and
+  is the backup when Scribe fails, stalls (500 ms) or writes the wrong script.
   Deepgram Flux remains as a fallback (`STT_PROVIDER=deepgram`). The agent's input runs through LiveKit Cloud's
   background voice cancellation (Krisp BVC, `NOISE_CANCELLATION`), so nearby conversations aren't heard, and short
   noises can't interrupt it. Fixed lines ("Go ahead, I'm listening.", "Sent. Someone's coming.") are pre-rendered
