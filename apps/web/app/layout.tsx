@@ -1,29 +1,15 @@
 import { DEFAULT_ROOM_SETTINGS } from '@bell/core/taxonomy'
 import type { Metadata, Viewport } from 'next'
-import { Atkinson_Hyperlegible, DM_Serif_Display, Fraunces } from 'next/font/google'
+import { Atkinson_Hyperlegible } from 'next/font/google'
 import type { ReactNode } from 'react'
 import './globals.css'
 
-// Clay: DM Serif Display headings, Atkinson Hyperlegible for everything else.
-// Fraunces is the Night theme's heading face (shown on /design; night is for later).
+// One family for the whole product: Atkinson Hyperlegible. Headings are its Bold (700)
+// with -0.01em tracking (tokens.css), in Clay and Night alike.
 const atkinson = Atkinson_Hyperlegible({
   subsets: ['latin'],
   weight: ['400', '700'],
   variable: '--font-atkinson',
-  display: 'swap',
-})
-
-const dmSerifDisplay = DM_Serif_Display({
-  subsets: ['latin'],
-  weight: '400',
-  variable: '--font-dm-serif-display',
-  display: 'swap',
-})
-
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  axes: ['opsz'],
-  variable: '--font-fraunces',
   display: 'swap',
 })
 
@@ -40,11 +26,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     // The theme is fixed to Clay for now (no picker on the tablet).
-    <html
-      lang="en"
-      data-theme={DEFAULT_ROOM_SETTINGS.theme}
-      className={`${atkinson.variable} ${dmSerifDisplay.variable} ${fraunces.variable}`}
-    >
+    <html lang="en" data-theme={DEFAULT_ROOM_SETTINGS.theme} className={atkinson.variable}>
       <body>{children}</body>
     </html>
   )

@@ -19,8 +19,8 @@ import {
 } from '../src'
 import { aiError, decision, expectWellFormed, mockModel, scriptedModel } from './helpers'
 
-const NURSE_NOTIFIED_EN = "I've let your nurse know."
-const NURSE_NOTIFIED_ES = 'Le he avisado a su enfermera.'
+const NURSE_NOTIFIED_EN = 'Your nurse is on the way.'
+const NURSE_NOTIFIED_ES = 'Tu enfermera ya viene.'
 const ASK_AGAIN_EN = 'Okay. What do you need?'
 
 beforeEach(() => {
@@ -532,16 +532,16 @@ describe('room language setting', () => {
     expect(result).toMatchObject({
       reason: 'timeout',
       language: 'pl',
-      patientReply: 'Twoja pielęgniarka została powiadomiona.',
+      patientReply: 'Pielęgniarka już idzie.',
     })
   })
 
   it.each([
-    ['tl', 'Naabisuhan ko na ang iyong nars.'],
-    ['ht', 'Mwen avèti enfimyè ou a.'],
-    ['ar', 'لقد أبلغت ممرضتك.'],
-    ['ko', '담당 간호사에게 알렸습니다.'],
-    ['vi', 'Tôi đã báo cho y tá của bạn.'],
+    ['tl', 'Papunta na ang nars mo.'],
+    ['ht', 'Enfimyè w la ap vini.'],
+    ['ar', 'ممرضتك في الطريق.'],
+    ['ko', '간호사가 오고 있어요.'],
+    ['vi', 'Y tá đang tới.'],
   ] as const)('%s setting localizes the nurse message on a red flag', async (language, reply) => {
     const result = await routeText('I have chest pain', { language })
     expect(result).toMatchObject({ reason: 'red_flag', language, patientReply: reply })

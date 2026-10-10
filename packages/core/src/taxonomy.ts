@@ -40,7 +40,7 @@ export interface RoutingDecision {
   confidence: number
   /** One line for staff screens, in English. */
   staffSummary: string
-  /** Read-back for the patient in their language ("An extra pillow."), or "I've let your nurse know." when it went straight to the nurse. Never names a team. */
+  /** Read-back for the patient in their language ("An extra pillow."), or the nurse_notified line when it went straight to the nurse. Never names a team. */
   patientReply: string
   /** BCP-47-ish language code of the patient's text, e.g. "en", "es". */
   language: string
@@ -158,8 +158,8 @@ export type RequestAction = (typeof REQUEST_ACTIONS)[number]
 
 /**
  * Per route reason: true when the result is a safety fallback to the nurse (red flag, clinical,
- * AI failure), so the patient hears "I've let your nurse know." instead of the normal
- * "Sent. Someone will be with you soon." One table, so the policy is a one-line change.
+ * AI failure), so the patient hears patientMessage("nurse_notified") instead of the normal
+ * patientMessage("sent"). One table, so the policy is a one-line change.
  */
 export const IMMEDIATE_BY_REASON: Readonly<Record<RouteReason, boolean>> = {
   model: false,
@@ -251,7 +251,7 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = { language: 'auto', theme: 'c
  * Job metadata the web token endpoint attaches to the agent dispatch (JSON).
  * mode 'request': the normal "Make a request" conversation.
  * mode 'emergency': opened from the emergency screen after "I need help immediately". The agent says
- * "I'm listening. Tell us what's wrong, if you can." and appends what the patient says to the
+ * patientMessage("emergency_listening") and appends what the patient says to the
  * emergency request (PATCH add_note) instead of making new requests.
  */
 export interface AgentJobMetadata {

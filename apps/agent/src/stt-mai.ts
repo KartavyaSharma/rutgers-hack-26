@@ -13,6 +13,7 @@
 // START_OF_SPEECH (first partial, or just before the final), INTERIM_TRANSCRIPT*,
 // FINAL_TRANSCRIPT, END_OF_SPEECH. With turnDetection 'stt' that END closes the user's turn.
 import { createGateway } from '@ai-sdk/gateway'
+import { canonicalLanguage, guessLanguage } from '@bell/core'
 import {
   APIConnectionError,
   type APIConnectOptions,
@@ -38,8 +39,10 @@ export const MAI_SAMPLE_RATE = 16_000
 /** Silence that ends an utterance. Also the main part of the end-of-turn delay. */
 export const DEFAULT_MAI_SILENCE_MS = 600
 const BATCH_TIMEOUT_MS = 5000
-/** How long to wait for the streaming final when the batch call failed. */
+/** How long to wait for the streaming final when the batch call failed or found no words. */
 const STREAM_FINAL_GRACE_MS = 1500
+/** Silence after which the batch call starts speculatively, before the utterance is committed. */
+export const SPECULATE_AFTER_MS = 250
 /** Utterances in a row with no transcript at all before the stream reports a connection error. */
 const MAX_CONSECUTIVE_FAILURES = 3
 
@@ -148,6 +151,7 @@ export function pcmToWav(pcm: Int16Array, sampleRate = MAI_SAMPLE_RATE): Uint8Ar
 
 export interface MaiSegmenterLogger {
   debug(fields: Record<string, unknown>, message: string): void
+  info(fields: Record<string, unknown>, message: string): void
   warn(fields: Record<string, unknown>, message: string): void
 }
 
@@ -156,6 +160,8 @@ export interface MaiSegmenterOptions {
   emit: (event: stt.SpeechEvent) => void
   /** MAI language hint (see maiLanguageHint); undefined to auto-detect. */
   language?: string
+  /** The room's language (board code), the starting point for sticky language; undefined for auto. */
+  roomLanguage?: string
   logger?: MaiSegmenterLogger
   /** Called after MAX_CONSECUTIVE_FAILURES utterances in a row produced no transcript at all. */
   onRepeatedFailure?: (error: Error) => void
@@ -172,9 +178,27 @@ interface Utterance {
   done: boolean
   /** The streaming final, or undefined if the session failed. */
   streamedFinal: Promise<string | undefined>
+  /** A batch call started during a pause, before the commit; dropped if speech resumes. */
+  speculative: { abort: AbortController; result: Promise<BatchOutcome> } | undefined
+  /** When the first final candidate was asked for (commit), for logging. */
+  committedAt: number
 }
 
-const NOOP_LOGGER: MaiSegmenterLogger = { debug() {}, warn() {} }
+/** A final transcript from one of the two MAI calls. */
+interface Candidate {
+  source: 'batch' | 'speculative' | 'stream'
+  text: string
+  /** Only the batch model reports one. */
+  language: string | undefined
+}
+
+/** A batch call's result: a transcript, nothing (no words), or an error. */
+interface BatchOutcome {
+  candidate: Candidate | undefined
+  error: unknown
+}
+
+const NOOP_LOGGER: MaiSegmenterLogger = { debug() {}, info() {}, warn() {} }
 
 /**
  * Turns VAD-cut utterances into LiveKit speech events using the two MAI calls. No LiveKit runtime
@@ -191,11 +215,14 @@ export class MaiSegmenter {
   #tail: Promise<void> = Promise.resolve()
   #failures = 0
   #closed = false
+  /** The session's last confident language (board code). */
+  #lastLanguage: string | undefined
 
   constructor(options: MaiSegmenterOptions) {
     this.#transcribers = options.transcribers
     this.#emit = options.emit
     this.#language = options.language
+    this.#lastLanguage = options.roomLanguage
     this.#log = options.logger ?? NOOP_LOGGER
     this.#onRepeatedFailure = options.onRepeatedFailure
   }
@@ -212,6 +239,8 @@ export class MaiSegmenter {
       started: false,
       done: false,
       streamedFinal: Promise.resolve(undefined),
+      speculative: undefined,
+      committedAt: 0,
     }
     const audio = new ReadableStream<Uint8Array>({
       start: (controller) => {
@@ -233,6 +262,28 @@ export class MaiSegmenter {
   }
 
   /**
+   * A pause long enough to guess the utterance may be over: start the batch call on the audio so
+   * far, in parallel with the rest of the silence wait. No-op if one is already running.
+   */
+  speculate(): void {
+    const utterance = this.#current
+    if (!utterance || utterance.speculative || this.#closed) return
+    const abort = new AbortController()
+    utterance.speculative = {
+      abort,
+      result: this.#batch(concat(utterance.chunks), 'speculative', abort.signal),
+    }
+  }
+
+  /** Speech resumed after a pause: the speculative call no longer covers the utterance. */
+  resumed(): void {
+    const speculative = this.#current?.speculative
+    if (!speculative || !this.#current) return
+    speculative.abort.abort()
+    this.#current.speculative = undefined
+  }
+
+  /**
    * Speech ended. Resolves once the utterance's FINAL and END events are out (or skipped, for an
    * utterance with no words).
    */
@@ -241,7 +292,8 @@ export class MaiSegmenter {
     this.#current = undefined
     if (!utterance || this.#closed) return Promise.resolve()
     closeAudio(utterance) // commits the streaming session
-    const result = this.#resolveFinal(utterance, concat(utterance.chunks))
+    utterance.committedAt = performance.now()
+    const result = this.#resolveFinal(utterance)
     const emitted = this.#tail.then(async () => {
       const final = await result
       if (this.#closed) return
@@ -272,6 +324,7 @@ export class MaiSegmenter {
       current.done = true
       closeAudio(current)
       current.abort.abort()
+      current.speculative?.abort.abort()
     }
     await this.#tail
   }
@@ -292,6 +345,7 @@ export class MaiSegmenter {
     this.#closed = true
     if (this.#current) closeAudio(this.#current)
     this.#current?.abort.abort()
+    this.#current?.speculative?.abort.abort()
     this.#current = undefined
   }
 
@@ -344,55 +398,133 @@ export class MaiSegmenter {
     })
   }
 
-  /** The batch transcript (with language); the streaming final if the batch call failed. */
+  /**
+   * The utterance's final: whichever valid, non-empty transcript arrives first, the batch call
+   * (speculative if it is still valid, else a fresh one) or the streaming final. A failed or empty
+   * batch call waits STREAM_FINAL_GRACE_MS for the stream; a failed stream never blocks the batch.
+   */
   async #resolveFinal(
     utterance: Utterance,
-    speech: Int16Array,
   ): Promise<{ text: string; language: string | undefined } | undefined> {
-    let batchError: unknown
-    try {
-      const batch = await this.#transcribers.batch({
-        wav: pcmToWav(speech),
-        language: this.#language,
-        abortSignal: AbortSignal.timeout(BATCH_TIMEOUT_MS),
-      })
-      this.#failures = 0
-      const text = batch.text.trim()
-      // Empty: noise or a cough, not words.
-      return text ? { text, language: batch.language } : undefined
-    } catch (error) {
-      batchError = error
+    const batch = utterance.speculative?.result ?? this.#batch(concat(utterance.chunks), 'batch')
+    const stream: Promise<Candidate | undefined> = utterance.streamedFinal.then((text) =>
+      text ? { source: 'stream', text, language: undefined } : undefined,
+    )
+    const graceForStream = () =>
+      Promise.race([
+        stream,
+        new Promise<undefined>((resolve) =>
+          setTimeout(() => resolve(undefined), STREAM_FINAL_GRACE_MS),
+        ),
+      ])
+    const winner = await Promise.race([
+      batch.then((outcome) => outcome.candidate ?? graceForStream()),
+      stream.then((candidate) => candidate ?? batch.then((outcome) => outcome.candidate)),
+    ])
+
+    if (!winner) {
+      const { error } = await batch
+      if (error === undefined) return undefined // no words: noise or a cough
+      this.#failures++
+      this.#log.warn(
+        { error: describeError(error), failures: this.#failures },
+        'MAI could not transcribe an utterance',
+      )
+      if (this.#failures >= MAX_CONSECUTIVE_FAILURES) {
+        this.#failures = 0
+        this.#onRepeatedFailure?.(
+          new APIConnectionError({
+            message: `MAI failed to transcribe ${MAX_CONSECUTIVE_FAILURES} utterances in a row: ${describeError(error)}`,
+          }),
+        )
+      }
+      return undefined
     }
 
-    const streamed = await Promise.race([
-      utterance.streamedFinal,
-      new Promise<undefined>((resolve) =>
-        setTimeout(() => resolve(undefined), STREAM_FINAL_GRACE_MS),
-      ),
-    ])
-    if (streamed) {
-      this.#failures = 0
-      this.#log.debug(
-        { error: describeError(batchError) },
-        'MAI batch failed; used streaming final',
-      )
-      return { text: streamed, language: undefined }
-    }
-    this.#failures++
-    this.#log.warn(
-      { error: describeError(batchError), failures: this.#failures },
-      'MAI could not transcribe an utterance',
+    this.#failures = 0
+    const resolved = resolveUtteranceLanguage({
+      text: winner.text,
+      detected: winner.language,
+      last: this.#lastLanguage,
+    })
+    if (resolved.confident) this.#lastLanguage = resolved.language
+    this.#log.info(
+      {
+        source: winner.source,
+        msAfterCommit: Math.round(performance.now() - utterance.committedAt),
+        detected: winner.language,
+        language: resolved.language,
+      },
+      'MAI final',
     )
-    if (this.#failures >= MAX_CONSECUTIVE_FAILURES) {
-      this.#failures = 0
-      this.#onRepeatedFailure?.(
-        new APIConnectionError({
-          message: `MAI failed to transcribe ${MAX_CONSECUTIVE_FAILURES} utterances in a row: ${describeError(batchError)}`,
-        }),
-      )
-    }
-    return undefined
+    return { text: winner.text, language: resolved.language }
   }
+
+  /** One batch call, with a timeout. Never rejects. `cancel` drops a speculative call. */
+  async #batch(
+    speech: Int16Array,
+    source: 'batch' | 'speculative',
+    cancel?: AbortSignal,
+  ): Promise<BatchOutcome> {
+    const timeout = AbortSignal.timeout(BATCH_TIMEOUT_MS)
+    try {
+      const result = await this.#transcribers.batch({
+        wav: pcmToWav(speech),
+        language: this.#language,
+        abortSignal: cancel ? AbortSignal.any([cancel, timeout]) : timeout,
+      })
+      const text = result.text.trim()
+      // Empty: noise or a cough, not words.
+      return {
+        candidate: text ? { source, text, language: result.language } : undefined,
+        error: undefined,
+      }
+    } catch (error) {
+      return { candidate: undefined, error: cancel?.aborted ? undefined : error }
+    }
+  }
+}
+
+const NON_LATIN = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu
+
+/** At most 4 CJK characters, or at most 2 words. */
+export function isShortUtterance(text: string): boolean {
+  const cjk = text.match(CJK)?.length ?? 0
+  if (cjk > 0) return cjk <= 4
+  return (
+    text
+      .trim()
+      .split(/\s+/)
+      .filter((w) => /[\p{L}\p{N}]/u.test(w)).length <= 2
+  )
+}
+
+/**
+ * The language to use for one final transcript (board code):
+ * - text in a non-Latin script decides (Han is zh, Hangul is ko, ...): MAI once heard "一杯水。" as en;
+ * - otherwise a short utterance (at most 4 CJK characters or 2 words) whose detected language
+ *   differs from the session's last confident language keeps the last language;
+ * - otherwise MAI's language, else a guess from the text, else the last language.
+ * `confident` says whether this result should become the session's last language.
+ */
+export function resolveUtteranceLanguage(input: {
+  text: string
+  detected?: string | undefined
+  last?: string | undefined
+}): { language: string | undefined; confident: boolean } {
+  const { text, last } = input
+  if (NON_LATIN.test(text)) {
+    const script = guessLanguage(text)
+    if (script) return { language: script, confident: true }
+  }
+  const detected = input.detected
+    ? (canonicalLanguage(input.detected) ?? boardLanguage(input.detected))
+    : undefined
+  const candidate = detected ?? guessLanguage(text) ?? undefined
+  const short = isShortUtterance(text)
+  if (short && last && candidate !== last) return { language: last, confident: false }
+  return { language: candidate ?? last, confident: candidate !== undefined && !short }
 }
 
 function closeAudio(utterance: Utterance): void {
@@ -436,12 +568,15 @@ export class MaiSTT extends stt.STT {
   readonly label = 'mai.STT'
   readonly #transcribers: MaiTranscribers
   readonly #language: string | undefined
+  readonly #roomLanguage: string | undefined
   readonly #vad: inference.VAD
 
   constructor(options: MaiSTTOptions) {
     super({ streaming: true, interimResults: true })
     this.#transcribers = options.transcribers ?? gatewayTranscribers(options.apiKey)
-    this.#language = maiLanguageHint(options.language ?? 'auto')
+    const language = options.language ?? 'auto'
+    this.#language = maiLanguageHint(language)
+    this.#roomLanguage = language === 'auto' ? undefined : language
     this.#vad = new inference.VAD({
       minSilenceDuration: options.silenceMs ?? DEFAULT_MAI_SILENCE_MS,
       minSpeechDuration: 100,
@@ -462,33 +597,37 @@ export class MaiSTT extends stt.STT {
   }
 
   stream(options?: { connOptions?: APIConnectOptions }): stt.SpeechStream {
-    return new MaiSpeechStream(
-      this,
-      this.#vad,
-      this.#transcribers,
-      this.#language,
-      options?.connOptions ?? DEFAULT_API_CONNECT_OPTIONS,
-    )
+    return new MaiSpeechStream(this, this.#vad, {
+      transcribers: this.#transcribers,
+      language: this.#language,
+      roomLanguage: this.#roomLanguage,
+      connOptions: options?.connOptions ?? DEFAULT_API_CONNECT_OPTIONS,
+    })
   }
 }
 
 class MaiSpeechStream extends stt.SpeechStream {
   readonly label = 'mai.SpeechStream'
   readonly #vad: inference.VAD
-  readonly #transcribers: MaiTranscribers
-  readonly #language: string | undefined
+  readonly #options: {
+    transcribers: MaiTranscribers
+    language: string | undefined
+    roomLanguage: string | undefined
+  }
 
   constructor(
     owner: MaiSTT,
     vad: inference.VAD,
-    transcribers: MaiTranscribers,
-    language: string | undefined,
-    connOptions: APIConnectOptions,
+    options: {
+      transcribers: MaiTranscribers
+      language: string | undefined
+      roomLanguage: string | undefined
+      connOptions: APIConnectOptions
+    },
   ) {
-    super(owner, MAI_SAMPLE_RATE, connOptions)
+    super(owner, MAI_SAMPLE_RATE, options.connOptions)
     this.#vad = vad
-    this.#transcribers = transcribers
-    this.#language = language
+    this.#options = options
   }
 
   /** One attempt: frames -> VAD -> segmenter. The base class retries it on APIError. */
@@ -502,8 +641,9 @@ class MaiSpeechStream extends stt.SpeechStream {
       vadStream.close()
     }
     const segmenter = new MaiSegmenter({
-      transcribers: this.#transcribers,
-      language: this.#language,
+      transcribers: this.#options.transcribers,
+      language: this.#options.language,
+      roomLanguage: this.#options.roomLanguage,
       logger,
       emit: (event) => {
         if (!this.queue.closed) this.queue.put(event)
@@ -546,7 +686,11 @@ class MaiSpeechStream extends stt.SpeechStream {
           speaking = true
           segmenter.start(event.frames.map(frameData))
         } else if (event.type === VADEventType.INFERENCE_DONE) {
-          if (speaking) for (const frame of event.frames) segmenter.audio(frameData(frame))
+          if (!speaking) continue
+          for (const frame of event.frames) segmenter.audio(frameData(frame))
+          // A pause inside the utterance: start the batch call early; drop it if speech resumes.
+          if (event.rawAccumulatedSilence >= SPECULATE_AFTER_MS) segmenter.speculate()
+          else if (event.rawAccumulatedSilence === 0) segmenter.resumed()
         } else if (event.type === VADEventType.END_OF_SPEECH) {
           speaking = false
           void segmenter.end()

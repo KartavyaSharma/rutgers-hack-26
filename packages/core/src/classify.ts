@@ -129,7 +129,7 @@ const withNurseCallCategory = (result: RouteResult): RouteResult =>
  * Use the caller's staff summary and read-back (the request card label) where they apply:
  * - staffSummary replaces the default, except on red flags (staff see the patient's words).
  * - readBack replaces the quoted words unless the nurse was alerted, and only if it names no
- *   team and doesn't claim anything was sent. Nurse-now results keep "I've let your nurse know."
+ *   team and doesn't claim anything was sent. Nurse-now results keep "Your nurse is on the way."
  */
 const applyCallerText = (result: RouteResult, input: ClassifyInput): RouteResult => {
   try {

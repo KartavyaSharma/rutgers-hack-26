@@ -23,34 +23,45 @@ describe('patientMessage', () => {
   })
 
   it('uses English for "auto" and unknown codes, and the primary subtag otherwise', () => {
-    expect(patientMessage('sent', 'auto')).toBe('Sent. Someone will be with you soon.')
-    expect(patientMessage('sent', 'xx')).toBe('Sent. Someone will be with you soon.')
+    expect(patientMessage('sent', 'auto')).toBe("Sent. Someone's coming.")
+    expect(patientMessage('sent', 'xx')).toBe("Sent. Someone's coming.")
     expect(patientMessage('sent', 'pt-BR')).toBe(patientMessage('sent', 'pt'))
   })
 
   it('has the agreed English strings', () => {
-    expect(patientMessage('sent', 'en')).toBe('Sent. Someone will be with you soon.')
-    expect(patientMessage('nurse_notified', 'en')).toBe("I've let your nurse know.")
+    expect(patientMessage('sent', 'en')).toBe("Sent. Someone's coming.")
+    expect(patientMessage('nurse_notified', 'en')).toBe('Your nurse is on the way.')
     expect(patientMessage('ask_again', 'en')).toBe('Okay. What do you need?')
     expect(patientMessage('save_failed', 'en')).toBe(
-      "Sorry, I couldn't send that. If you need help, press “I need help immediately”.",
+      "Couldn't send that. Press “I need help immediately”.",
     )
-    expect(patientMessage('emergency_listening', 'en')).toBe(
-      "I'm listening. Tell us what's wrong, if you can.",
-    )
-    expect(patientMessage('emergency_noted', 'en')).toBe('Thank you. Your nurse is on the way.')
-    expect(patientMessage('cancelled', 'en')).toBe('Okay, I cancelled that.')
-    expect(patientMessage('one_moment', 'en')).toBe('One moment.')
+    expect(patientMessage('emergency_listening', 'en')).toBe("I'm here. What's wrong?")
+    expect(patientMessage('emergency_noted', 'en')).toBe("Got it. Help's coming.")
+    expect(patientMessage('cancelled', 'en')).toBe('Okay, cancelled.')
+    expect(patientMessage('one_moment', 'en')).toBe('One sec.')
+    expect(patientMessage('listening_intro', 'en')).toBe("Go ahead, I'm listening.")
+  })
+
+  it('keeps the spoken lines short', () => {
+    const words = (text: string) => text.match(/[\p{L}\p{N}']+/gu)?.length ?? 0
+    for (const key of PATIENT_MESSAGE_KEYS) {
+      const message = patientMessage(key, 'en')
+      if (key === 'save_failed') {
+        expect(words(message.replace(HELP_BUTTON_LABELS.en, ''))).toBeLessThanOrEqual(4)
+      } else {
+        expect(words(message)).toBeLessThanOrEqual(6)
+      }
+    }
   })
 
   it('localizes the new messages', () => {
-    expect(patientMessage('emergency_listening', 'es')).toBe(
-      'Le escucho. Díganos qué pasa, si puede.',
-    )
-    expect(patientMessage('emergency_noted', 'es')).toBe('Gracias. Su enfermera está en camino.')
-    expect(patientMessage('cancelled', 'fr')).toBe("D'accord, je l'ai annulé.")
+    expect(patientMessage('emergency_listening', 'es')).toBe('Aquí estoy. ¿Qué pasa?')
+    expect(patientMessage('emergency_noted', 'es')).toBe('Entendido. Ya viene ayuda.')
+    expect(patientMessage('listening_intro', 'es')).toBe('Dime, te escucho.')
+    expect(patientMessage('listening_intro', 'zh')).toBe('请说，我在听。')
+    expect(patientMessage('cancelled', 'fr')).toBe("D'accord, c'est annulé.")
     expect(patientMessage('one_moment', 'de')).toBe('Einen Moment.')
-    expect(patientMessage('one_moment', 'ja')).toBe('少々お待ちください。')
+    expect(patientMessage('one_moment', 'ja')).toBe('少しお待ちください。')
   })
 })
 
@@ -81,10 +92,10 @@ describe('HELP_BUTTON_LABELS', () => {
       expect(patientMessage('save_failed', code)).toContain(HELP_BUTTON_LABELS[code])
     }
     expect(patientMessage('save_failed', 'es')).toBe(
-      'Lo siento, no pude enviarlo. Si necesita ayuda, pulse “Necesito ayuda inmediata”.',
+      'No se pudo enviar. Pulsa “Necesito ayuda inmediata”.',
     )
     expect(patientMessage('save_failed', 'de')).toBe(
-      'Entschuldigung, das konnte ich nicht senden. Wenn Sie Hilfe brauchen, drücken Sie „Ich brauche sofort Hilfe“.',
+      'Senden hat nicht geklappt. Drücken Sie „Ich brauche sofort Hilfe“.',
     )
   })
 
@@ -103,9 +114,9 @@ describe('new room languages', () => {
         expect(patientMessage(key, code)).not.toBe(patientMessage(key, 'en'))
       }
     }
-    expect(patientMessage('cancelled', 'vi')).toBe('Vâng, tôi đã hủy yêu cầu đó.')
-    expect(patientMessage('one_moment', 'ko')).toBe('잠시만요.')
-    expect(patientMessage('sent', 'pl')).toBe('Wysłano. Ktoś wkrótce do Ciebie przyjdzie.')
+    expect(patientMessage('cancelled', 'vi')).toBe('Vâng, đã hủy.')
+    expect(patientMessage('one_moment', 'ko')).toBe('잠깐만요.')
+    expect(patientMessage('sent', 'pl')).toBe('Wysłane. Ktoś zaraz przyjdzie.')
   })
 
   it('maps region and alias codes, and falls back to English', () => {

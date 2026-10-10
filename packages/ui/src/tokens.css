@@ -1,8 +1,8 @@
-/* Bell tokens, from the Bell Design System (tokens.json, version 2).
+/* Bell tokens, from the Bell Design System (tokens.json, version 3).
    One set of names, two themes. Clay is the default; Night is the dark variant for later.
    Set data-theme="clay" | "night" on <html> or on any subtree (they nest either way).
-   Fonts (Google Fonts): Atkinson Hyperlegible 400/700, DM Serif Display 400,
-   Fraunces opsz 9..144 at 500/600 (Night headings only).
+   Fonts (Google Fonts): Atkinson Hyperlegible 400/700 is the only family. Headings are
+   Atkinson Bold with -0.01em tracking, in both themes.
    Color rules: red (--nurse*) only for help and the nurse. A request step always shows its word. */
 
 :root,
@@ -37,9 +37,6 @@
   --focus: var(--ink);
   --scrim: rgba(20, 24, 22, 0.45);
   --shadow-raised: none;
-  --font-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
-  --heading-weight: 400;
-  --heading-weight-strong: 400;
   --chip-radius: var(--radius-pill);
 }
 
@@ -74,25 +71,26 @@
   --focus: var(--ink);
   --scrim: rgba(0, 0, 0, 0.6);
   --shadow-raised: 0 0 0 1px #3e352e;
-  --font-heading: Fraunces, Georgia, "Times New Roman", serif;
-  --heading-weight: 500;
-  --heading-weight-strong: 600;
   --chip-radius: var(--radius-pill);
 }
 
 :root {
   --font-body: "Atkinson Hyperlegible", "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --font-heading: "Atkinson Hyperlegible", "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --heading-weight: 700;
+  --heading-weight-strong: 700;
+  --heading-tracking: -0.01em;
 
   --text-caption: 18px;
   --text-body: 20px;
   --text-lead: 22px;
   --text-label: 24px;
   --text-title: 28px;
-  --text-heading: 36px;
-  --text-display: 44px;
-  --text-display-lg: 48px;
-  --text-display-xl: 52px;
-  --text-hero: 76px;
+  --text-heading: 31px;
+  --text-display: 38px;
+  --text-display-lg: 41px;
+  --text-display-xl: 45px;
+  --text-hero: 65px;
   --leading-tight: 1.05;
   --leading-body: 1.4;
 

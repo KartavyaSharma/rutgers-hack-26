@@ -49,7 +49,7 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 | `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | text to speech |
 | `ELEVEN_MODEL` | agent | `eleven_v4_turbo` (default, low latency) or `eleven_v4` (higher quality) |
 | `TYPESAFE_API_KEY` | web, agent | Jev classifier (team, clinical, urgency); optional `TYPESAFE_MODEL` (default `jev-latest`) |
-| `CEREBRAS_API_KEY` | agent (web: backup router) | conversation LLM `qwen-3.8-27b` with `reasoning_effort: "high"` (`CEREBRAS_AGENT_MODEL`, `CEREBRAS_AGENT_REASONING_EFFORT`); also the backup Qwen JSON router (`routeText`) |
+| `CEREBRAS_API_KEY` | agent (web: backup router) | conversation LLM `qwen-3.8-27b` with `reasoning_effort: "low"` (`CEREBRAS_AGENT_MODEL`, `CEREBRAS_AGENT_REASONING_EFFORT`); also the backup Qwen JSON router (`routeText`) |
 | `DATABASE_URL` | web | Postgres; unset means PGlite in `apps/web/.data/` |
 | `APP_URL` | agent | where the agent calls the web API, e.g. `http://localhost:3000` |
 | `AGENT_SHARED_SECRET` | web, agent | bearer token the agent uses for routed requests and notes |
@@ -84,8 +84,11 @@ packages/ui     design tokens (tokens.css from the design system) and base compo
   agent with `{ roomId, language, mode, emergencyRequestId }`. Speech-to-text is MAI-Transcribe-2 through the Vercel
   AI Gateway: a local VAD cuts each utterance (600 ms of silence), the streaming model gives live partials and the
   batch model gives the final text and its language (about 1.1–1.5 s from the end of speech to the end of the turn).
-  Deepgram Flux remains as a fallback (`STT_PROVIDER=deepgram`). Red-flag phrases
-  are caught in code before the LLM and go straight to the nurse. Otherwise Qwen 3.8 (reasoning high) keeps it
+  Deepgram Flux remains as a fallback (`STT_PROVIDER=deepgram`). The agent's input runs through LiveKit Cloud's
+  background voice cancellation (Krisp BVC, `NOISE_CANCELLATION`), so nearby conversations aren't heard, and short
+  noises can't interrupt it. Fixed lines ("Go ahead, I'm listening.", "Sent. Someone's coming.") are pre-rendered
+  per language so they play instantly. Red-flag phrases
+  are caught in code before the LLM and go straight to the nurse. Otherwise Qwen 3.8 (reasoning low) keeps it
   terse and conversational, and says a short phrase whenever it calls a tool: `send_request` (Jev classifies in the
   background, then the request is sent), `cancel_request` (corrections, "never mind"), `call_my_nurse`.
   All writes go through the web API (the only writer).

@@ -82,8 +82,8 @@ export function Dialog({
       {eyebrow ? <p className="text-body text-muted">{eyebrow}</p> : null}
       <DialogPrimitive.Title
         className={cn(
-          'font-heading text-display-xl leading-tight',
-          tone === 'nurse' ? 'text-nurse' : 'text-ink',
+          'font-heading text-display-lg leading-tight',
+          tone === 'nurse' ? 'text-nurse-ink' : 'text-ink',
         )}
       >
         {title}

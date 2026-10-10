@@ -23,7 +23,7 @@ export const quoteForStaff = (text: string, language: string): string => {
 /**
  * The patient-facing label for the request card, decided by the same rule the apps use for
  * their message (`needsNurseNow`):
- * - a safety fallback to the nurse (red flag, clinical, AI failure): "I've let your nurse know."
+ * - a safety fallback to the nurse (red flag, clinical, AI failure): "Your nurse is on the way."
  * - empty input: "Okay. What do you need?" (there is nothing to describe)
  * - otherwise a short description: the model's / caller's, or the patient's own words quoted.
  */

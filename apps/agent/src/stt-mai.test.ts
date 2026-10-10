@@ -1,12 +1,15 @@
 import { stt } from '@livekit/agents'
 import type { TranscriptionStreamPart } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
+import { interruptionWords } from './interruptions'
 import {
   boardLanguage,
+  isShortUtterance,
   MaiSegmenter,
   type MaiTranscribers,
   maiLanguageHint,
   pcmToWav,
+  resolveUtteranceLanguage,
 } from './stt-mai'
 
 const { START_OF_SPEECH, INTERIM_TRANSCRIPT, FINAL_TRANSCRIPT, END_OF_SPEECH } = stt.SpeechEventType
@@ -47,7 +50,10 @@ function fakeMai(
   return { stream, batch } satisfies MaiTranscribers
 }
 
-function harness(transcribers: MaiTranscribers, options: { language?: string } = {}) {
+function harness(
+  transcribers: MaiTranscribers,
+  options: { language?: string; roomLanguage?: string } = {},
+) {
   const events: stt.SpeechEvent[] = []
   const onRepeatedFailure = vi.fn()
   const segmenter = new MaiSegmenter({
@@ -131,8 +137,8 @@ describe('MaiSegmenter', () => {
 
     expect(summary()).toEqual([
       [START_OF_SPEECH],
-      [FINAL_TRANSCRIPT, 'I need water', ''],
-      [END_OF_SPEECH, 'I need water', ''],
+      [FINAL_TRANSCRIPT, 'I need water', 'en'],
+      [END_OF_SPEECH, 'I need water', 'en'],
     ])
   })
 
@@ -251,6 +257,163 @@ describe('MaiSegmenter', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('MaiSegmenter speculative batch and race', () => {
+  it('starts the batch call during the pause and uses it at commit', async () => {
+    const mai = fakeMai([session([])], [async () => ({ text: 'A blanket', language: 'en' })])
+    const { segmenter, summary } = harness(mai)
+
+    segmenter.start([new Int16Array([1, 2])])
+    segmenter.speculate()
+    segmenter.audio(new Int16Array([0, 0])) // the rest of the silence wait
+    await segmenter.end()
+
+    expect(mai.batch).toHaveBeenCalledTimes(1)
+    const wav = mai.batch.mock.calls[0]?.[0].wav
+    // speculated on the audio up to the pause
+    expect(wav && Array.from(new Int16Array(wav.slice(44).buffer))).toEqual([1, 2])
+    expect(summary()).toEqual([
+      [START_OF_SPEECH],
+      [FINAL_TRANSCRIPT, 'A blanket', 'en'],
+      [END_OF_SPEECH, 'A blanket', 'en'],
+    ])
+  })
+
+  it('drops the speculative call when speech resumes, and calls again on all the audio', async () => {
+    let firstSignal: AbortSignal | undefined
+    const mai = fakeMai(
+      [session([])],
+      [async () => ({ text: 'A blanket and water', language: 'en' })],
+    )
+    // the first (speculative) call never answers and must be dropped
+    mai.batch.mockImplementationOnce(({ abortSignal }) => {
+      firstSignal = abortSignal
+      return new Promise(() => {})
+    })
+    const { segmenter, summary } = harness(mai)
+
+    segmenter.start([new Int16Array([1])])
+    segmenter.speculate()
+    segmenter.resumed()
+    segmenter.audio(new Int16Array([2]))
+    await segmenter.end()
+
+    expect(firstSignal?.aborted).toBe(true)
+    expect(mai.batch).toHaveBeenCalledTimes(2)
+    const wav = mai.batch.mock.calls[1]?.[0].wav
+    expect(wav && Array.from(new Int16Array(wav.slice(44).buffer))).toEqual([1, 2])
+    expect(summary().at(-2)).toEqual([FINAL_TRANSCRIPT, 'A blanket and water', 'en'])
+  })
+
+  it('takes the streaming final when it beats the batch call (language from the text)', async () => {
+    const slowBatch = deferred<{ text: string; language?: string }>()
+    const mai = fakeMai(
+      [session([{ type: 'transcript-final', text: '一杯水。' }])],
+      [() => slowBatch.promise],
+    )
+    const { segmenter, summary } = harness(mai)
+
+    segmenter.start([pcm()])
+    await tick()
+    await segmenter.end()
+
+    expect(summary()).toEqual([
+      [START_OF_SPEECH],
+      [FINAL_TRANSCRIPT, '一杯水。', 'zh'],
+      [END_OF_SPEECH, '一杯水。', 'zh'],
+    ])
+    slowBatch.resolve({ text: '一杯水。', language: 'zh' })
+  })
+
+  it('does not wait for a streaming session that hangs or fails', async () => {
+    const neverEnds = new Promise<void>(() => {})
+    const mai = fakeMai(
+      [session([{ type: 'transcript-partial', text: 'some wa' }], neverEnds)],
+      [async () => ({ text: 'Some water', language: 'en' })],
+    )
+    const { segmenter, summary } = harness(mai)
+
+    segmenter.start([pcm()])
+    await tick()
+    await segmenter.end()
+
+    expect(summary().slice(-2)).toEqual([
+      [FINAL_TRANSCRIPT, 'Some water', 'en'],
+      [END_OF_SPEECH, 'Some water', 'en'],
+    ])
+  })
+
+  it('keeps the session language for a short utterance detected as another language', async () => {
+    const mai = fakeMai(
+      [session([]), session([])],
+      [
+        async () => ({ text: 'Necesito una manta extra, por favor', language: 'es' }),
+        async () => ({ text: 'Okay', language: 'en' }),
+      ],
+    )
+    const { segmenter, summary } = harness(mai)
+
+    segmenter.start([pcm()])
+    await segmenter.end()
+    segmenter.start([pcm()])
+    await segmenter.end()
+
+    expect(summary().at(-1)).toEqual([END_OF_SPEECH, 'Okay', 'es'])
+  })
+})
+
+describe('resolveUtteranceLanguage', () => {
+  it('trusts the script over the detected language', () => {
+    expect(resolveUtteranceLanguage({ text: '一杯水。', detected: 'en' })).toEqual({
+      language: 'zh',
+      confident: true,
+    })
+    expect(resolveUtteranceLanguage({ text: '물 주세요', detected: 'en', last: 'es' })).toEqual({
+      language: 'ko',
+      confident: true,
+    })
+  })
+
+  it('keeps the last language for a short Latin-script utterance that disagrees', () => {
+    expect(resolveUtteranceLanguage({ text: 'Okay', detected: 'en', last: 'es' })).toEqual({
+      language: 'es',
+      confident: false,
+    })
+  })
+
+  it('switches language on a longer utterance', () => {
+    expect(
+      resolveUtteranceLanguage({
+        text: 'Could I get another blanket please',
+        detected: 'en',
+        last: 'es',
+      }),
+    ).toEqual({ language: 'en', confident: true })
+  })
+
+  it('uses the detected language for a first short utterance, without trusting it yet', () => {
+    expect(resolveUtteranceLanguage({ text: 'Water', detected: 'en' })).toEqual({
+      language: 'en',
+      confident: false,
+    })
+  })
+
+  it('measures short utterances in CJK characters or words', () => {
+    expect(isShortUtterance('一杯水。')).toBe(true)
+    expect(isShortUtterance('我需要一条毯子')).toBe(false)
+    expect(isShortUtterance('Yes please')).toBe(true)
+    expect(isShortUtterance('Some more water')).toBe(false)
+  })
+})
+
+describe('interruptionWords', () => {
+  it('needs 2 words, except for CJK where the duration does it', () => {
+    expect(interruptionWords('en')).toBe(2)
+    expect(interruptionWords(undefined)).toBe(2)
+    expect(interruptionWords('zh')).toBe(0)
+    expect(interruptionWords('ko-KR')).toBe(0)
   })
 })
 

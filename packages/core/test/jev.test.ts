@@ -274,7 +274,7 @@ describe('Jev routing', () => {
       { ...KEY, fetch },
     )
     expect(result).toMatchObject({ reason: 'clinical', language: 'es' })
-    expect(result.patientReply).toBe('Le he avisado a su enfermera.')
+    expect(result.patientReply).toBe('Tu enfermera ya viene.')
   })
 
   it('red flags never call Jev', async () => {
@@ -291,7 +291,7 @@ describe('Jev routing', () => {
       reason: 'red_flag',
       category: NURSE_BUTTON.category,
       language: 'es',
-      patientReply: 'Le he avisado a su enfermera.',
+      patientReply: 'Tu enfermera ya viene.',
     })
     expect(needsNurseNow(result)).toBe(true)
     expectWellFormed(result)
@@ -309,7 +309,7 @@ describe('Jev routing', () => {
       urgency: 'urgent',
       clinical: true,
       reason: 'clinical',
-      patientReply: "I've let your nurse know.",
+      patientReply: 'Your nurse is on the way.',
     })
     expect(needsNurseNow(result)).toBe(true)
     expectWellFormed(result)
@@ -406,7 +406,7 @@ describe('Jev failures', () => {
     expect(result).toMatchObject({ team: 'nurse', reason, category: NURSE_BUTTON.category })
     // These all go to the nurse right away, so the patient is told so.
     expect(IMMEDIATE_BY_REASON[reason]).toBe(true)
-    expect(result.patientReply).toBe("I've let your nurse know.")
+    expect(result.patientReply).toBe('Your nurse is on the way.')
     expectWellFormed(result)
   })
 

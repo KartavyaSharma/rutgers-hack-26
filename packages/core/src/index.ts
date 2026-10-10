@@ -43,6 +43,7 @@ export {
   RouterRateLimited,
   RouterTimeout,
 } from './errors'
+export { canonicalLanguage, guessLanguage } from './language'
 export {
   HELP_BUTTON_LABELS,
   helpButtonLabel,
@@ -99,7 +100,7 @@ const lastResort = (text: unknown): RouteResult => {
       clinical: false,
       confidence: 0,
       staffSummary: 'Patient request (router error)',
-      patientReply: "I've let your nurse know.",
+      patientReply: 'Your nurse is on the way.',
       language: 'en',
       reason: 'error',
     }

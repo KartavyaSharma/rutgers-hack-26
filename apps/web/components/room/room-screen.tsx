@@ -440,7 +440,8 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
 
       {emergency ? (
         <EmergencyScreen
-          className="z-40"
+          // Fixed, not absolute: cover the whole viewport, not just the 1024px tablet frame.
+          className="fixed z-40"
           voice={emergencyVoice}
           onTalk={talkInEmergency}
           onMistake={() => void pressMistake()}

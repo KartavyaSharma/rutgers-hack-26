@@ -59,6 +59,7 @@ const COLOR_TOKENS = [
 ] as const
 
 const TYPE_SCALE = [
+  ['hero', 'text-hero'],
   ['display-xl', 'text-display-xl'],
   ['display-lg', 'text-display-lg'],
   ['display', 'text-display'],
@@ -149,13 +150,13 @@ function ThemePanel({ theme }: { theme: (typeof THEMES)[number] }) {
 
       <Block
         title="Type"
-        note="Headings in the theme's serif, everything else in Atkinson Hyperlegible"
+        note="One family: headings in Atkinson Hyperlegible Bold at -0.01em, everything else in Atkinson Hyperlegible"
       >
         <div className="flex flex-col gap-3">
           {TYPE_SCALE.map(([name, cls]) => (
             <p
               key={name}
-              className={`${cls} ${name.startsWith('display') || name === 'heading' ? 'font-heading' : 'font-body'}`}
+              className={`${cls} ${name === 'hero' || name.startsWith('display') || name === 'heading' ? 'font-heading' : 'font-body'}`}
             >
               {name}: Make a request
             </p>

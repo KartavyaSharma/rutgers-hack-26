@@ -3,7 +3,10 @@ import { cn, focusRing, pressable } from './cn'
 const tile =
   'flex min-h-[220px] flex-col justify-between gap-3 rounded-md bg-surface p-5 text-left text-ink'
 const tileLabel = 'text-body font-bold text-muted'
+/** Lights % and temperature ° (41px on the boards). */
 const tileValue = 'font-heading text-display-lg leading-none'
+/** Blinds and TV state words (38px on the boards). */
+const tileWord = 'font-heading text-display leading-none'
 const stepButton = cn(
   'min-h-tap flex-1 rounded-pill bg-action-tint font-body text-title font-bold text-ink',
   'disabled:cursor-not-allowed disabled:opacity-50',
@@ -104,7 +107,7 @@ export function ToggleTile({
       )}
     >
       <span className={tileLabel}>{label}</span>
-      <span className={tileValue}>{value}</span>
+      <span className={tileWord}>{value}</span>
       <span className="text-body text-muted">{hint}</span>
     </button>
   )

@@ -31,7 +31,8 @@ export const DEFAULT_APP_URL = 'http://localhost:3000'
 export const DEFAULT_CEREBRAS_AGENT_MODEL = 'qwen-3.8-27b'
 export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high'] as const
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
-export const DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT: ReasoningEffort = 'high'
+/** Kurt's default for snappier replies; CEREBRAS_AGENT_REASONING_EFFORT overrides it. */
+export const DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT: ReasoningEffort = 'low'
 
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   typeof value === 'string' && (REASONING_EFFORTS as readonly string[]).includes(value)
@@ -76,6 +77,10 @@ export function envWarnings(): string[] {
       `CEREBRAS_AGENT_REASONING_EFFORT must be one of ${REASONING_EFFORTS.join(', ')}; using ${DEFAULT_CEREBRAS_AGENT_REASONING_EFFORT}`,
     )
   }
+  const nc = read('NOISE_CANCELLATION')?.toLowerCase()
+  if (nc !== undefined && nc !== 'bvc' && nc !== 'off') {
+    warnings.push('NOISE_CANCELLATION must be bvc or off; using bvc')
+  }
   const provider = read('STT_PROVIDER')
   if (provider !== undefined && !isSttProvider(provider.toLowerCase())) {
     warnings.push(`STT_PROVIDER must be one of ${STT_PROVIDERS.join(', ')}; using ${sttProvider()}`)
@@ -89,6 +94,8 @@ export type SttEnv =
 
 export interface AgentEnv {
   stt: SttEnv
+  /** NOISE_CANCELLATION: 'bvc' (default, LiveKit Cloud background voice cancellation) or 'off'. */
+  noiseCancellation: 'bvc' | 'off'
   elevenApiKey: string
   /** undefined means the ElevenLabs plugin's default voice. */
   elevenVoiceId: string | undefined
@@ -110,6 +117,7 @@ export function agentEnv(): AgentEnv {
       provider === 'mai'
         ? { provider, aiGatewayApiKey: required(STT_KEYS.mai) }
         : { provider, deepgramApiKey: required(STT_KEYS.deepgram) },
+    noiseCancellation: read('NOISE_CANCELLATION')?.toLowerCase() === 'off' ? 'off' : 'bvc',
     elevenApiKey: required('ELEVEN_API_KEY'),
     elevenVoiceId: read('ELEVEN_VOICE_ID'),
     elevenModel: read('ELEVEN_MODEL') ?? DEFAULT_ELEVEN_MODEL,

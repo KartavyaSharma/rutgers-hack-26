@@ -78,7 +78,10 @@
   --text-5xl: var(--text-display-xl);
   --text-5xl--line-height: var(--leading-tight);
 
-  /* rounded-chip: pill in clay, radius-sm elsewhere */
+  /* tracking-heading: the -0.01em heading tracking, for a heading that doesn't use font-heading. */
+  --tracking-heading: var(--heading-tracking);
+
+  /* rounded-chip: the icon-chip radius (a pill in both themes) */
   --radius-chip: var(--chip-radius);
 
   /* Sizes: min-h-tap, size-tap, h-tap-lg, min-h-tile, size-main, size-disc .. size-disc-xl */
@@ -110,6 +113,14 @@
   --spacing-space-10: var(--space-10);
   --spacing-space-11: var(--space-11);
   --spacing-space-12: var(--space-12);
+}
+
+/* Heading type is one family, one weight and one tracking (tokens.css): Atkinson Hyperlegible
+   at --heading-weight (700), -0.01em. `font-heading` applies all three, so headings don't
+   need font-bold or tracking-* of their own. */
+@utility font-heading {
+  font-weight: var(--heading-weight);
+  letter-spacing: var(--heading-tracking);
 }
 
 /* Motion. The emergency ripple comes from tokens.css (it is `none` under reduced motion);

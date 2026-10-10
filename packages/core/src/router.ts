@@ -111,7 +111,7 @@ export const classifyText = (
 
 /**
  * Safety rules applied to a valid model decision, in order: clinical, then low confidence.
- * Clinical tells the patient "I've let your nurse know."; low confidence goes to the nurse with
+ * Clinical tells the patient "Your nurse is on the way."; low confidence goes to the nurse with
  * the patient's own words quoted, since the model's description may be wrong.
  */
 export const applySafetyRules = (text: string, decision: RoutingDecision): RouteResult => {
