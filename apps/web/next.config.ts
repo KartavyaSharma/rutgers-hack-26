@@ -39,6 +39,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['@electric-sql/pglite'],
   turbopack: { root: repoRoot },
   outputFileTracingRoot: repoRoot,
+  // The dev server is also published at this name through the kvrt.sh relay (`pnpm live`).
+  allowedDevOrigins: ['patient.ruhack.kvrt.sh'],
 }
 
 export default nextConfig

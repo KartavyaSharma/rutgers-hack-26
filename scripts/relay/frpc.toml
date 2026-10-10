@@ -1,0 +1,17 @@
+# Publishes the local web app (pnpm dev, port 3217) at https://patient.ruhack.kvrt.sh through the
+# frp relay on the kvrt.sh droplet (patient-frps.service). Caddy on the droplet terminates HTTPS.
+# The auth token lives outside the repo at ~/.config/bell-relay/token.
+serverAddr = "64.23.229.221"
+serverPort = 7003
+auth.method = "token"
+auth.tokenSource.type = "file"
+auth.tokenSource.file.path = "{{ .Envs.HOME }}/.config/bell-relay/token"
+transport.tls.enable = true
+loginFailExit = false
+
+[[proxies]]
+name = "patient-web"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3217
+remotePort = 18081

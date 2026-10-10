@@ -12,7 +12,8 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "live": "frpc -c scripts/relay/frpc.toml"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
