@@ -53,7 +53,8 @@ export interface RouterOptions {
 
 const decodeDecision = Schema.decodeUnknownEffect(RoutingDecisionSchema)
 
-const normalizeCategory = (raw: string): string =>
+/** snake_case label for staff screens, e.g. "TV Remote!" -> "tv_remote". */
+export const normalizeCategory = (raw: string): string =>
   raw
     .trim()
     .toLowerCase()
@@ -185,12 +186,21 @@ export const routeTextEffect = (
     )
   })
 
-  return routed.pipe(
-    recoverRouterErrors(input, language),
-    Effect.catchCause((cause) =>
-      Effect.logError(`[bell/router] unexpected failure\n${Cause.pretty(cause)}`).pipe(
-        Effect.as(nurseFallback(input, 'error', language)),
-      ),
-    ),
-  )
+  return routed.pipe(recoverToNurse(input, language))
 }
+
+/**
+ * Every failure becomes a nurse decision: typed router errors (handled exhaustively), then
+ * defects and anything else in the cause. The result can't fail.
+ */
+export const recoverToNurse =
+  (text: string, language: LanguageCode | undefined) =>
+  <R>(self: Effect.Effect<RouteResult, RouterError, R>): Effect.Effect<RouteResult, never, R> =>
+    self.pipe(
+      recoverRouterErrors(text, language),
+      Effect.catchCause((cause) =>
+        Effect.logError(`[bell/router] unexpected failure\n${Cause.pretty(cause)}`).pipe(
+          Effect.as(nurseFallback(text, 'error', language)),
+        ),
+      ),
+    )

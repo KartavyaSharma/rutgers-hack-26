@@ -1,4 +1,4 @@
-import { routeText } from '@bell/core'
+import { classifyRequest } from '@bell/core'
 import { draftReadBack, patientMessage } from '@bell/core/messages'
 import { needsNurseNow, type RouteResponse } from '@bell/core/taxonomy'
 import type { NextRequest } from 'next/server'
@@ -12,8 +12,9 @@ export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/route { roomId, text, language? } -> RouteResponse
- * Typed text becomes a pending draft the patient must confirm, unless the nurse is needed now
- * (red flag, clinical, router failure): then the request is saved immediately.
+ * Typed text is classified by Jev (classifyRequest) and becomes a pending draft the patient must
+ * confirm, unless the nurse is needed now (red flag, clinical, classifier failure): then the
+ * request is saved immediately. The draft's read-back is the patient's own words.
  */
 export async function POST(request: NextRequest) {
   const body = await readJsonObject(request)
@@ -26,8 +27,8 @@ export async function POST(request: NextRequest) {
   if (!language.ok) return badRequest(language.message)
 
   try {
-    // routeText never rejects: every failure comes back as a nurse decision.
-    const decision = await routeText(text.value, { language: language.value })
+    // classifyRequest never rejects: every failure comes back as a nurse decision.
+    const decision = await classifyRequest({ text: text.value, language: language.value })
 
     if (needsNurseNow(decision)) {
       const sent = await createRequest(fromDecision(roomId.value, 'typed', text.value, decision))

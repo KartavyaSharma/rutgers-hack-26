@@ -7,7 +7,6 @@ import {
   IMMEDIATE_BY_REASON,
   makeRouteText,
   needsNurseNow,
-  patientMessage,
   quotePatientWords,
   ROUTE_REASONS,
   ROUTER_TIMEOUT_MS,
@@ -17,20 +16,12 @@ import {
   type RoutingDecision,
   routeText,
   routeTextEffect,
-  TEAMS,
 } from '../src'
-import { aiError, decision, mockModel, scriptedModel } from './helpers'
+import { aiError, decision, expectWellFormed, mockModel, scriptedModel } from './helpers'
 
 const NURSE_NOTIFIED_EN = "I've let your nurse know."
 const NURSE_NOTIFIED_ES = 'Le he avisado a su enfermera.'
 const ASK_AGAIN_EN = 'Okay. What do you need?'
-
-// Independent of the implementation's own guard: team words patients must never see.
-const NON_NURSE_TEAM_WORDS =
-  /(^|[^\p{L}])(care ?aides?|aide|housekeeping|facilities|maintenance|food services|kitchen|IT (help|support|team)|tech support|auxiliar|limpieza|mantenimiento|cocina|aide-soignant|ménage|entretien|Hausmeister|Reinigung|Küche|manutenção|limpeza|cozinha|manutenzione|pulizie|schoonmaak|onderhoud|keuken)(?=[^\p{L}]|$)/iu
-// A draft read-back must not mention the nurse or claim anything was sent either.
-const NURSE_OR_SENT_WORDS =
-  /(^|[^\p{L}])(nurse|enfermera|infirmière|Pflegekraft|enfermeira|infermiere|verpleegkundige|sent|enviado|envoyé|gesendet|let your)(?=[^\p{L}]|$)/iu
 
 beforeEach(() => {
   // Tests never use a real key, even if one is exported in the developer's shell.
@@ -40,27 +31,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs()
 })
-
-/** Every result must be a complete, well-formed RouteResult that follows the reply rules. */
-const expectWellFormed = (result: RouteResult) => {
-  expect(TEAMS).toContain(result.team)
-  expect(ROUTE_REASONS).toContain(result.reason)
-  expect(['urgent', 'soon', 'routine']).toContain(result.urgency)
-  expect(result.confidence).toBeGreaterThanOrEqual(0)
-  expect(result.confidence).toBeLessThanOrEqual(1)
-  expect(result.category.length).toBeGreaterThan(0)
-  expect(result.staffSummary.length).toBeGreaterThan(0)
-  expect(result.staffSummary).not.toMatch(/[\r\n]/)
-  expect(result.patientReply.length).toBeGreaterThan(0)
-  expect(result.patientReply).not.toMatch(/[\r\n]/)
-  expect(result.language.length).toBeGreaterThan(0)
-  expect(result.patientReply).not.toMatch(NON_NURSE_TEAM_WORDS)
-  if (needsNurseNow(result)) {
-    expect(result.patientReply).toBe(patientMessage('nurse_notified', result.language))
-  } else {
-    expect(result.patientReply).not.toMatch(NURSE_OR_SENT_WORDS)
-  }
-}
 
 describe('model routing (mocked LLM)', () => {
   const routed: ReadonlyArray<readonly [string, RoutingDecision]> = [

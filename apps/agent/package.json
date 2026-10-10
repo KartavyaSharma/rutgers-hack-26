@@ -8,11 +8,12 @@
     "start": "tsx src/main.ts start",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'agent: no tests yet'"
+    "test": "vitest run"
   },
   "dependencies": {
     "@bell/core": "workspace:*",
     "@livekit/agents": "1.9.2",
+    "@livekit/agents-plugin-cerebras": "1.9.2",
     "@livekit/agents-plugin-deepgram": "1.9.2",
     "@livekit/agents-plugin-elevenlabs": "1.9.2",
     "@livekit/rtc-node": "1.1.0",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
   }
 }

@@ -2,8 +2,9 @@
 
 A bedside tablet call bell that sends each request to the right hospital team.
 The patient taps a request, taps **My nurse**, types, or taps the mic and speaks.
-Buttons go straight to a fixed team. Typed and spoken requests are routed by AI to the care aide,
-housekeeping, facilities, food services or IT, and **anything clinical or unclear always goes to the nurse**.
+Buttons go straight to a fixed team. Typed and spoken requests are classified by Jev (TypeSafe AI) and sent to
+the care aide, housekeeping, facilities, food services or IT, and **anything clinical or unclear always goes to the
+nurse**. The voice agent holds a normal conversation (Qwen 3.8 on Cerebras) and uses tools to file requests.
 
 ## Run it
 
@@ -45,7 +46,8 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 | `DEEPGRAM_API_KEY` | agent | speech to text, Deepgram Flux `flux-general-multi` |
 | `ELEVEN_API_KEY`, `ELEVEN_VOICE_ID` | agent | text to speech |
 | `ELEVEN_MODEL` | agent | `eleven_v4_turbo` (default, low latency) or `eleven_v4` (higher quality) |
-| `CEREBRAS_API_KEY` | web, agent | router LLM (`qwen-3.8-27b`, `reasoning_effort: "none"`); optional `CEREBRAS_MODEL` |
+| `TYPESAFE_API_KEY` | web, agent | Jev classifier (team, clinical, urgency); optional `TYPESAFE_MODEL` (default `jev-latest`) |
+| `CEREBRAS_API_KEY` | agent (web: backup router) | conversation LLM `qwen-3.8-27b` with `reasoning_effort: "high"` (`CEREBRAS_AGENT_MODEL`, `CEREBRAS_AGENT_REASONING_EFFORT`); also the backup Qwen JSON router (`routeText`) |
 | `DATABASE_URL` | web | Postgres; unset means PGlite in `apps/web/.data/` |
 | `APP_URL` | agent | where the agent calls the web API, e.g. `http://localhost:3000` |
 | `AGENT_SHARED_SECRET` | web, agent | bearer token the agent uses for routed requests and drafts |
@@ -54,31 +56,34 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 
 ```
 apps/web        Next.js 16 (App Router, Tailwind 4): tablet, staff dev view, API, SSE, Postgres/PGlite via Drizzle
-apps/agent      LiveKit Agents (Node): Deepgram Flux STT -> router -> web API -> ElevenLabs TTS
-packages/core   router (Effect 4 + Cerebras), shared taxonomy/types, localized patient messages, adapter seams
+apps/agent      LiveKit Agents (Node): Deepgram Flux STT -> Qwen 3.8 conversation + tools -> Jev -> web API -> ElevenLabs TTS
+packages/core   classifier (Effect 4: Jev, plus the backup Qwen router), shared taxonomy/types, localized patient messages, adapter seams
 packages/ui     design tokens (tokens.css from the design system) and base components
 ```
 
 - **Buttons skip AI.** The home screen has up to 8 groups, each with up to 7 plain-word requests, and every
   request has a fixed team (`REQUEST_GROUPS` in `packages/core/src/taxonomy.ts`, placeholder content for now).
   A tap sends it. **My nurse** always goes to the nurse.
-- **Typed and spoken requests become a draft first.** The router picks the team, and the patient sees or hears a
+- **Typed and spoken requests become a draft first.** Jev picks the team, and the patient sees or hears a
   read-back ("An extra pillow. Say yes, or tap Send."). Nothing is sent until they say yes or tap Send, and a draft
   never auto-sends. A "no" or a correction makes a new draft.
 - **Except when the nurse is needed now.** Red flags, anything the router marks clinical, and AI failures
   (timeout, error, bad output, rate limit) go to the nurse immediately: "I've let your nurse know."
   One table decides this: `IMMEDIATE_BY_REASON` in the taxonomy. Low confidence becomes a nurse draft.
 - **The patient side never names a team.** The team lives in the data for the hospital side.
-- **Router safety order**: red-flag phrases (chest pain, can't breathe, fell, bleeding, ... in the 10 room languages)
-  before any AI call; the model saying "clinical"; confidence under 0.8; timeout over 2 s, errors, bad JSON or rate
-  limits. Every path ends on the nurse. `routeText()` never rejects.
+- **Classifier safety order** (`classifyRequest()` in core): red-flag phrases (chest pain, can't breathe, fell,
+  bleeding, ... in the 10 room languages) before any AI call; Jev saying clinical; team confidence under 0.8; timeout
+  over 2 s, errors, bad output or rate limits. Every path ends on the nurse. It never rejects.
 - **Language and theme are room settings** on the tablet: language is Auto (detected) or one of the 10 Flux
   languages, and flows to the speech-to-text hint, the router's reply language and the text-to-speech language.
   Theme is Linen (default), Clay or Night.
 - **Voice**: tap to talk. The tablet gets a LiveKit token from `POST /api/livekit/token`, which dispatches the agent
-  with `{ roomId, language }`. Flux's end of turn closes each turn. The agent routes, creates the draft or the
-  immediate request through the web API (the only writer), and speaks. Tapping Send on the tablet confirms through
-  the API and tells the agent over LiveKit RPC (`bell.draft_confirmed`).
+  with `{ roomId, language }`. Flux's end of turn closes each turn. Red-flag phrases are caught in code before the LLM
+  and go straight to the nurse. Otherwise Qwen 3.8 (reasoning high) chats normally and calls tools when there is
+  something to do: `classify_and_draft` (async: Jev classifies in the background while the conversation continues,
+  then the agent reads back the draft), `confirm_draft`, `cancel_draft`, `call_my_nurse`. All writes go through the
+  web API (the only writer). Tapping Send on the tablet confirms through the API and tells the agent over LiveKit RPC
+  (`bell.draft_confirmed`).
 
 ## Hospital-side interface (for now)
 

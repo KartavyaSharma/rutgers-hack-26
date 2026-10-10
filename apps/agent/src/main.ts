@@ -3,7 +3,7 @@
 import { extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AGENT_NAME } from '@bell/core/taxonomy'
-import { loadRootEnv, missingEnv } from './env'
+import { envWarnings, loadRootEnv, missingEnv } from './env'
 
 loadRootEnv()
 
@@ -12,6 +12,7 @@ if (missing.length > 0) {
   console.log(`voice agent disabled: missing ${missing.join(', ')} (see .env.example)`)
   process.exit(0)
 }
+for (const warning of envWarnings()) console.warn(`voice agent: ${warning}`)
 
 // Loaded only once we know the worker will run.
 const { ServerOptions, cli } = await import('@livekit/agents')
