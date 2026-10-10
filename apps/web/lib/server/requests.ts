@@ -9,13 +9,17 @@ import {
   type RequestStatus,
   type RouteResult,
 } from '@bell/core/taxonomy'
-import { and, desc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, notInArray, type SQL, sql } from 'drizzle-orm'
 import { publish } from './bus'
 import { type Executor, getDb } from './db'
 import { type RequestRow, requests } from './schema'
 import type { ListQuery } from './validate'
 
 const iso = (date: Date | null): string | null => (date ? date.toISOString() : null)
+
+/** Statuses that end a request. Open = anything else (see isOpenStatus in @bell/core). */
+const CLOSED: RequestStatus[] = ['done', 'cancelled']
+const OPEN: RequestStatus[] = ['sent', 'seen', 'on_the_way']
 
 export const toCallRequest = (row: RequestRow): CallRequest => ({
   id: row.id,
@@ -38,6 +42,9 @@ export const toCallRequest = (row: RequestRow): CallRequest => ({
   seenAt: iso(row.seenAt),
   claimedAt: iso(row.claimedAt),
   doneAt: iso(row.doneAt),
+  cancelledAt: iso(row.cancelledAt),
+  nudgedAt: iso(row.nudgedAt),
+  notes: Array.isArray(row.notes) ? row.notes : [],
 })
 
 /** A request option on the tablet. Fixed destination, never the AI. */
@@ -60,7 +67,7 @@ export const fromOption = (roomId: string, optionId: OptionId): NewCallRequest =
   }
 }
 
-/** The "My nurse" button. Always the nurse, never the AI. */
+/** The "I need help immediately" button. Always the nurse, urgent, never the AI. */
 export const fromNurseButton = (roomId: string): NewCallRequest => ({
   roomId,
   team: NURSE_BUTTON.team,
@@ -103,7 +110,7 @@ export const fromDecision = (
   }
 }
 
-/** Insert a request with `executor` (the database, or a transaction such as a draft confirm). */
+/** Insert a request with `executor` (the database or a transaction). */
 export const insertRequest = async (
   executor: Executor,
   request: NewCallRequest,
@@ -136,7 +143,7 @@ export const listRequests = async (query: ListQuery): Promise<CallRequest[]> => 
   const conditions: SQL[] = []
   if (query.team) conditions.push(eq(requests.team, query.team))
   if (query.roomId) conditions.push(eq(requests.roomId, query.roomId))
-  if (query.status === 'open') conditions.push(ne(requests.status, 'done'))
+  if (query.status === 'open') conditions.push(notInArray(requests.status, CLOSED))
   else if (query.status !== 'all') conditions.push(eq(requests.status, query.status))
 
   const rows = await db
@@ -160,19 +167,30 @@ export type ActionResult =
   | { kind: 'conflict'; request: CallRequest; message: string }
   | { kind: 'not_found' }
 
+/** Actions that change the request's state (add_note carries text, see addRequestNote). */
+export type StateAction = Exclude<RequestAction, 'add_note'>
+
+const closedMessage = (status: RequestStatus): string =>
+  status === 'cancelled' ? 'This request was cancelled' : 'This request is already done'
+
 /**
- * seen: sent -> seen (no-op otherwise).
- * claim: sent|seen -> on_the_way (no-op if already on the way, conflict if done).
- * done: anything -> done (no-op if already done).
- * Each is one conditional UPDATE, so concurrent staff clicks can't regress a status.
+ * Staff:
+ * - seen: sent -> seen (no-op otherwise).
+ * - claim: sent|seen -> on_the_way (no-op if already on the way, 409 if done or cancelled).
+ * - done: any open status -> done (no-op if already done, 409 if cancelled).
+ * Patient:
+ * - cancel: any open status -> cancelled (no-op if already cancelled, 409 if done).
+ * - nudge: sets nudgedAt on an open request (409 if done or cancelled).
+ * Each is one conditional UPDATE, so concurrent clicks can't regress a status.
  */
 export const applyRequestAction = async (
   id: string,
-  action: RequestAction,
+  action: StateAction,
 ): Promise<ActionResult> => {
   const db = await getDb()
   const now = sql`now()`
   const seenAt = sql`coalesce(${requests.seenAt}, now())`
+  const byId = eq(requests.id, id)
 
   const update = (() => {
     switch (action) {
@@ -180,17 +198,27 @@ export const applyRequestAction = async (
         return db
           .update(requests)
           .set({ status: 'seen', seenAt: now, updatedAt: now })
-          .where(and(eq(requests.id, id), eq(requests.status, 'sent')))
+          .where(and(byId, eq(requests.status, 'sent')))
       case 'claim':
         return db
           .update(requests)
           .set({ status: 'on_the_way', seenAt, claimedAt: now, updatedAt: now })
-          .where(and(eq(requests.id, id), inArray(requests.status, ['sent', 'seen'])))
+          .where(and(byId, inArray(requests.status, ['sent', 'seen'])))
       case 'done':
         return db
           .update(requests)
           .set({ status: 'done', seenAt, doneAt: now, updatedAt: now })
-          .where(and(eq(requests.id, id), ne(requests.status, 'done')))
+          .where(and(byId, inArray(requests.status, OPEN)))
+      case 'cancel':
+        return db
+          .update(requests)
+          .set({ status: 'cancelled', cancelledAt: now, updatedAt: now })
+          .where(and(byId, inArray(requests.status, OPEN)))
+      case 'nudge':
+        return db
+          .update(requests)
+          .set({ nudgedAt: now, updatedAt: now })
+          .where(and(byId, inArray(requests.status, OPEN)))
     }
   })()
 
@@ -203,10 +231,40 @@ export const applyRequestAction = async (
 
   const current = await getRequest(id)
   if (!current) return { kind: 'not_found' }
-  if (action === 'claim' && current.status === 'done') {
-    return { kind: 'conflict', request: current, message: 'This request is already done' }
-  }
-  return { kind: 'unchanged', request: current }
+  const closed = CLOSED.includes(current.status)
+  const conflict = (() => {
+    switch (action) {
+      case 'seen':
+        return false
+      case 'claim':
+      case 'nudge':
+        return closed
+      case 'done':
+        return current.status === 'cancelled'
+      case 'cancel':
+        return current.status === 'done'
+    }
+  })()
+  return conflict
+    ? { kind: 'conflict', request: current, message: closedMessage(current.status) }
+    : { kind: 'unchanged', request: current }
+}
+
+/** Append one note (what the patient said after an emergency call). Works on any status. */
+export const addRequestNote = async (id: string, text: string): Promise<ActionResult> => {
+  const db = await getDb()
+  const [row] = await db
+    .update(requests)
+    .set({
+      notes: sql`${requests.notes} || jsonb_build_array(${text}::text)`,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(requests.id, id))
+    .returning()
+  if (!row) return { kind: 'not_found' }
+  const request = toCallRequest(row)
+  publish({ type: 'request.updated', request })
+  return { kind: 'updated', request }
 }
 
 /**
@@ -224,17 +282,29 @@ export const setRequestStatus = async (
   const timestamps = (() => {
     switch (status) {
       case 'sent':
-        return { seenAt: null, claimedAt: null, doneAt: null }
+        return { seenAt: null, claimedAt: null, doneAt: null, cancelledAt: null }
       case 'seen':
-        return { seenAt: keepOrNow(requests.seenAt), claimedAt: null, doneAt: null }
+        return {
+          seenAt: keepOrNow(requests.seenAt),
+          claimedAt: null,
+          doneAt: null,
+          cancelledAt: null,
+        }
       case 'on_the_way':
         return {
           seenAt: keepOrNow(requests.seenAt),
           claimedAt: keepOrNow(requests.claimedAt),
           doneAt: null,
+          cancelledAt: null,
         }
       case 'done':
-        return { seenAt: keepOrNow(requests.seenAt), doneAt: keepOrNow(requests.doneAt) }
+        return {
+          seenAt: keepOrNow(requests.seenAt),
+          doneAt: keepOrNow(requests.doneAt),
+          cancelledAt: null,
+        }
+      case 'cancelled':
+        return { doneAt: null, cancelledAt: keepOrNow(requests.cancelledAt) }
     }
   })()
 

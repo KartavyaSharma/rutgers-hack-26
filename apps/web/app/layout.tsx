@@ -2,9 +2,10 @@ import { DEFAULT_ROOM_SETTINGS } from '@bell/core/taxonomy'
 import type { Metadata, Viewport } from 'next'
 import { Atkinson_Hyperlegible, DM_Serif_Display, Fraunces } from 'next/font/google'
 import type { ReactNode } from 'react'
-import { themeBootScript } from '@/lib/theme'
 import './globals.css'
 
+// Clay: DM Serif Display headings, Atkinson Hyperlegible for everything else.
+// Fraunces is the Night theme's heading face (shown on /design; night is for later).
 const atkinson = Atkinson_Hyperlegible({
   subsets: ['latin'],
   weight: ['400', '700'],
@@ -12,17 +13,17 @@ const atkinson = Atkinson_Hyperlegible({
   display: 'swap',
 })
 
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  axes: ['opsz'],
-  variable: '--font-fraunces',
-  display: 'swap',
-})
-
 const dmSerifDisplay = DM_Serif_Display({
   subsets: ['latin'],
   weight: '400',
   variable: '--font-dm-serif-display',
+  display: 'swap',
+})
+
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  axes: ['opsz'],
+  variable: '--font-fraunces',
   display: 'swap',
 })
 
@@ -38,17 +39,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
+    // The theme is fixed to Clay for now (no picker on the tablet).
     <html
       lang="en"
       data-theme={DEFAULT_ROOM_SETTINGS.theme}
-      className={`${atkinson.variable} ${fraunces.variable} ${dmSerifDisplay.variable}`}
-      suppressHydrationWarning
+      className={`${atkinson.variable} ${dmSerifDisplay.variable} ${fraunces.variable}`}
     >
-      <head>
-        {/* Applies a room's saved theme before first paint. */}
-        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user input */}
-        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
-      </head>
       <body>{children}</body>
     </html>
   )

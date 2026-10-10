@@ -1,8 +1,7 @@
 import { classifyRequest } from '@bell/core'
-import { draftReadBack, patientMessage } from '@bell/core/messages'
+import { patientMessage } from '@bell/core/messages'
 import { needsNurseNow, type RouteResponse } from '@bell/core/taxonomy'
 import type { NextRequest } from 'next/server'
-import { createDraft } from '@/lib/server/drafts'
 import { badRequest, json, readJsonObject, serverError } from '@/lib/server/http'
 import { createRequest, fromDecision } from '@/lib/server/requests'
 import { parseLanguage, parseRoomId, parseText } from '@/lib/server/validate'
@@ -11,10 +10,11 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * POST /api/route { roomId, text, language? } -> RouteResponse
- * Typed text is classified by Jev (classifyRequest) and becomes a pending draft the patient must
- * confirm, unless the nurse is needed now (red flag, clinical, classifier failure): then the
- * request is saved immediately. The draft's read-back is the patient's own words.
+ * POST /api/route { roomId, text, language? } -> 201 RouteResponse { request, message }
+ * Typed text is classified by Jev (classifyRequest) and sent right away; there is no confirm
+ * step (the patient can cancel it afterwards). `message` is "I've let your nurse know." when the
+ * router fell back to the nurse for safety (needsNurseNow), else "Sent. Someone will be with you
+ * soon.", in the patient's language.
  */
 export async function POST(request: NextRequest) {
   const body = await readJsonObject(request)
@@ -29,25 +29,14 @@ export async function POST(request: NextRequest) {
   try {
     // classifyRequest never rejects: every failure comes back as a nurse decision.
     const decision = await classifyRequest({ text: text.value, language: language.value })
-
-    if (needsNurseNow(decision)) {
-      const sent = await createRequest(fromDecision(roomId.value, 'typed', text.value, decision))
-      const response: RouteResponse = {
-        kind: 'sent',
-        request: sent,
-        message: patientMessage('nurse_notified', decision.language),
-      }
-      return json(response, 201)
+    const sent = await createRequest(fromDecision(roomId.value, 'typed', text.value, decision))
+    const response: RouteResponse = {
+      request: sent,
+      message: patientMessage(
+        needsNurseNow(decision) ? 'nurse_notified' : 'sent',
+        decision.language,
+      ),
     }
-
-    const draft = await createDraft({
-      roomId: roomId.value,
-      source: 'typed',
-      text: text.value,
-      decision,
-      patientText: decision.patientReply,
-    })
-    const response: RouteResponse = { kind: 'draft', draft, message: draftReadBack(decision) }
     return json(response, 201)
   } catch (error) {
     return serverError(error, 'route typed request')

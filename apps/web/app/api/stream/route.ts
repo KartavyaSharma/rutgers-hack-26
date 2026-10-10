@@ -9,10 +9,7 @@ export const dynamic = 'force-dynamic'
 
 const HEARTBEAT_MS = 15_000
 
-/**
- * GET /api/stream?team=&room= : server-sent events of created/updated requests, plus draft events
- * for room-only subscribers (the tablet).
- */
+/** GET /api/stream?team=&room= : server-sent events of created/updated requests. */
 export async function GET(request: NextRequest) {
   const query = parseListQuery(request.nextUrl.searchParams)
   if (!query.ok) return badRequest(query.message)
@@ -34,14 +31,8 @@ export async function GET(request: NextRequest) {
       }
 
       const unsubscribe = subscribe((event: StreamEvent) => {
-        if ('draft' in event) {
-          // Drafts are the patient's unsent words: only the room's own screen sees them,
-          // never a team (staff) stream or an unfiltered one.
-          if (!roomId || team || event.draft.roomId !== roomId) return
-        } else {
-          if (team && event.request.team !== team) return
-          if (roomId && event.request.roomId !== roomId) return
-        }
+        if (team && event.request.team !== team) return
+        if (roomId && event.request.roomId !== roomId) return
         send(`data: ${JSON.stringify(event)}\n\n`)
       })
       const heartbeat = setInterval(() => send(': heartbeat\n\n'), HEARTBEAT_MS)

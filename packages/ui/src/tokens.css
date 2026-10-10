@@ -1,57 +1,31 @@
-/* Call Bell tokens. One set of names, three themes.
-   Set data-theme="linen" | "clay" | "night" on <html>. Linen is the default.
-   Fonts (Google Fonts): Atkinson Hyperlegible 400/700, Fraunces opsz 9..144 at 500/600, DM Serif Display 400. */
+/* Bell tokens, from the Bell Design System (tokens.json, version 2).
+   One set of names, two themes. Clay is the default; Night is the dark variant for later.
+   Set data-theme="clay" | "night" on <html> or on any subtree (they nest either way).
+   Fonts (Google Fonts): Atkinson Hyperlegible 400/700, DM Serif Display 400,
+   Fraunces opsz 9..144 at 500/600 (Night headings only).
+   Color rules: red (--nurse*) only for help and the nurse. A request step always shows its word. */
 
 :root,
-:root[data-theme="linen"] {
-  color-scheme: light;
-  --bg: #E9EDE6;
-  --surface: #F7F8F4;
-  --ink: #1E2B24;
-  --muted: #4E5B53;
-  --border: #CFD8CE;
-  --action: #2F5D46;
-  --action-strong: #1E3D2E;
-  --action-tint: #DCE6DC;
-  --action-ink: #2F5D46;
-  --on-action: #F7F8F4;
-  --nurse: #A6332A;
-  --nurse-tint: #F6E3DE;
-  --nurse-ink: #6E1F18;
-  --on-nurse: #FFFFFF;
-  --state-sent: #E4EAE2;
-  --state-sent-ink: #1E2B24;
-  --state-seen: #A8C2AF;
-  --state-seen-ink: #1E2B24;
-  --state-on-the-way: #3F6E55;
-  --state-on-the-way-ink: #FFFFFF;
-  --state-done: #1E3D2E;
-  --state-done-ink: #F7F8F4;
-  --focus: var(--ink);
-  --scrim: rgba(30, 43, 36, 0.42);
-  --shadow-raised: 0 1px 0 #1e2b2414;
-  --font-heading: Fraunces, Georgia, "Times New Roman", serif;
-  --heading-weight: 500;
-  --heading-weight-strong: 600;
-  --chip-radius: var(--radius-sm);
-}
-
 [data-theme="clay"] {
   color-scheme: light;
   --bg: #F2EDE6;
   --surface: #FBF8F3;
   --ink: #2B2622;
-  --muted: #6A5F55;
-  --border: #DDD3C7;
-  --action: #2B2622;
-  --action-strong: #A44A2C;
-  --action-tint: #F0DCD0;
+  --muted: #6B6058;
+  --border: #E3DACF;
+  --action: #A44A2C;
+  --action-strong: #8A3C22;
+  --action-tint: #F2E2D6;
+  --action-tint-soft: #F7EDE5;
   --action-ink: #A44A2C;
-  --on-action: #FBF8F3;
+  --on-action: #FFFFFF;
   --nurse: #8F1D1D;
   --nurse-tint: #F5DCD6;
-  --nurse-ink: #6B1717;
+  --nurse-ink: #8F1D1D;
   --on-nurse: #FFFFFF;
+  --on-nurse-muted: #F5DCD6;
+  --on-nurse-line: rgba(255, 255, 255, 0.5);
+  --on-nurse-disc: rgba(255, 255, 255, 0.18);
   --state-sent: #EEE6DC;
   --state-sent-ink: #2B2622;
   --state-seen: #CDB8A3;
@@ -61,8 +35,8 @@
   --state-done: #2B2622;
   --state-done-ink: #FBF8F3;
   --focus: var(--ink);
-  --scrim: rgba(43, 38, 34, 0.45);
-  --shadow-raised: 0 1px 0 #2b262212;
+  --scrim: rgba(20, 24, 22, 0.45);
+  --shadow-raised: none;
   --font-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
   --heading-weight: 400;
   --heading-weight-strong: 400;
@@ -79,12 +53,16 @@
   --action: #7E3B24;
   --action-strong: #A54D2F;
   --action-tint: #3B2A21;
+  --action-tint-soft: #30241D;
   --action-ink: #E89B78;
   --on-action: #F6EADD;
-  --nurse: #EE8A7C;
+  --nurse: #8E2A22;
   --nurse-tint: #3D1E1B;
-  --nurse-ink: #F6D2CA;
-  --on-nurse: #1A1512;
+  --nurse-ink: #EE8A7C;
+  --on-nurse: #FBEDE8;
+  --on-nurse-muted: #F6D2CA;
+  --on-nurse-line: rgba(251, 237, 232, 0.55);
+  --on-nurse-disc: rgba(251, 237, 232, 0.18);
   --state-sent: #332A24;
   --state-sent-ink: #E6DACB;
   --state-seen: #5E4D41;
@@ -99,7 +77,7 @@
   --font-heading: Fraunces, Georgia, "Times New Roman", serif;
   --heading-weight: 500;
   --heading-weight-strong: 600;
-  --chip-radius: var(--radius-sm);
+  --chip-radius: var(--radius-pill);
 }
 
 :root {
@@ -107,27 +85,31 @@
 
   --text-caption: 18px;
   --text-body: 20px;
-  --text-lead: 24px;
+  --text-lead: 22px;
+  --text-label: 24px;
   --text-title: 28px;
-  --text-heading: 34px;
-  --text-display: 40px;
-  --text-display-lg: 44px;
-  --text-display-xl: 48px;
-  --leading-tight: 1.1;
-  --leading-body: 1.35;
+  --text-heading: 36px;
+  --text-display: 44px;
+  --text-display-lg: 48px;
+  --text-display-xl: 52px;
+  --text-hero: 76px;
+  --leading-tight: 1.05;
+  --leading-body: 1.4;
 
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 14px;
   --space-5: 16px;
-  --space-6: 20px;
-  --space-7: 24px;
+  --space-6: 18px;
+  --space-7: 22px;
   --space-8: 28px;
   --space-9: 32px;
   --space-10: 40px;
+  --space-11: 44px;
+  --space-12: 56px;
 
-  --radius-sm: 18px;
+  --radius-sm: 22px;
   --radius-md: 26px;
   --radius-lg: 32px;
   --radius-xl: 36px;
@@ -135,18 +117,48 @@
 
   --size-tap: 64px;
   --size-tap-lg: 72px;
+  --size-tap-xl: 88px;
   --size-tile: 112px;
-  --size-main: 188px;
+  --size-main: 248px;
+  --size-column: 390px;
   --size-disc: 64px;
-  --size-disc-lg: 84px;
-  --size-disc-xl: 112px;
+  --size-disc-lg: 80px;
+  --size-disc-xl: 190px;
+  --size-disc-listen: 170px;
+  --size-ring: 16px;
+  --size-dialog: 640px;
+  --size-sheet: 860px;
 
   --focus-width: 4px;
   --focus-gap: 3px;
+
+  /* Motion: keep it still. Colors and opacity fade over --motion-duration.
+     The only loop is the EmergencyScreen ripple (two rings, 1s apart). */
   --motion-duration: 160ms;
   --motion-ease: ease-out;
+  --anim-fade-in: bell-fade-in calc(var(--motion-duration) * 1.75) var(--motion-ease);
+  --anim-fade-out: bell-fade-out var(--motion-duration) ease-in;
+  --anim-ripple: bell-ripple 2s ease-out infinite;
+}
+
+@keyframes bell-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bell-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes bell-ripple {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.9); opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --motion-duration: 0ms; }
+  :root {
+    --motion-duration: 0ms;
+    --anim-ripple: none;
+  }
 }

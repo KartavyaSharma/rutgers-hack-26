@@ -180,7 +180,7 @@ describe('model routing (mocked LLM)', () => {
     expectWellFormed(result)
   })
 
-  it('low confidence: a nurse draft that quotes the patient', async () => {
+  it('low confidence: to the nurse, quoting the patient', async () => {
     const { layer } = scriptedModel({
       'the thing is doing the thing again': decision({
         team: 'facilities',
@@ -381,7 +381,7 @@ describe('failure paths all go to the nurse', () => {
     expect(result).toMatchObject({ team: 'nurse', reason: 'not_configured' })
   })
 
-  it('missing API key: no network, a nurse draft quoting the patient', async () => {
+  it('missing API key: no network, to the nurse quoting the patient', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>()
     const result = await routeText('can I get another blanket', { fetch })
     expect(fetch).not.toHaveBeenCalled()
@@ -430,7 +430,7 @@ describe('failure paths all go to the nurse', () => {
   })
 })
 
-describe('IMMEDIATE_BY_REASON: which results skip the draft', () => {
+describe('IMMEDIATE_BY_REASON: which results tell the patient the nurse was alerted', () => {
   it('maps every reason as agreed', () => {
     expect(IMMEDIATE_BY_REASON).toEqual({
       model: false,
@@ -505,7 +505,7 @@ describe('room language setting', () => {
     })
   })
 
-  it('Spanish setting + English text: the draft quotes the patient and is tagged es', async () => {
+  it('Spanish setting + English text: the label quotes the patient and is tagged es', async () => {
     const result = await routeText('can I get another blanket', { language: 'es' })
     expect(result).toMatchObject({
       reason: 'not_configured',

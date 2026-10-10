@@ -24,22 +24,24 @@ const FAILURES: ReadonlyArray<RouteReason> = [
 
 describe.skipIf(!enabled)('Jev live', () => {
   it.each([
-    ['can I get another blanket', 'care_aide', 'model'],
-    ['the TV remote is broken', 'facilities', 'model'],
-    ['I feel sick to my stomach after my new medication', 'nurse', 'clinical'],
+    ['can I get another blanket', 'care_aide', 'model', 'comfort'],
+    ['the TV remote is broken', 'facilities', 'model', 'fix_something'],
+    ['I feel sick to my stomach after my new medication', 'nurse', 'clinical', 'ask_care_team'],
   ] as const)(
-    '%j -> %s (%s)',
-    async (text, team, reason) => {
+    '%j -> %s (%s, %s)',
+    async (text, team, reason, group) => {
       const started = Date.now()
       const result = await classifyRequest({ text }, { timeoutMs: 5000 })
       const ms = Date.now() - started
       console.log(
         `[jev live] ${JSON.stringify(text)} -> team=${result.team} reason=${result.reason} ` +
-          `confidence=${result.confidence.toFixed(2)} urgency=${result.urgency} ${ms}ms`,
+          `category=${result.category} confidence=${result.confidence.toFixed(2)} ` +
+          `urgency=${result.urgency} ${ms}ms`,
       )
       expect(FAILURES).not.toContain(result.reason)
       expect(result.team).toBe(team)
       expect(result.reason).toBe(reason)
+      expect(result.category).toBe(group)
       expect(IMMEDIATE_BY_REASON[result.reason]).toBe(reason === 'clinical')
     },
     10_000,

@@ -1,6 +1,6 @@
+import type { BlindsPosition, TvState } from '@bell/core/adapters'
 import {
-  DRAFT_STATUSES,
-  type DraftStatus,
+  type AgentJobMetadata,
   isLanguagePreference,
   isOptionId,
   isTeam,
@@ -199,58 +199,127 @@ export const parseStatus = (value: unknown): Parsed<RequestStatus> =>
     ? ok(value)
     : fail(`status must be one of: ${REQUEST_STATUSES.join(', ')}`)
 
-export interface DraftBody {
+/** add_note text: what the patient said after an emergency call. */
+export const MAX_NOTE_LENGTH = 500
+
+export const parseNoteText = (value: unknown): Parsed<string> =>
+  parseString(value, 'text', { max: MAX_NOTE_LENGTH })
+
+export interface VoiceTokenBody {
   roomId: string
-  source: 'voice'
-  text: string
-  decision: RouteResult
+  language: LanguagePreference
+  mode: AgentJobMetadata['mode']
+  emergencyRequestId: string | null
 }
 
-/** Body of POST /api/drafts (DraftInput from the voice agent). */
-export const parseDraftInput = (body: Record<string, unknown>): Parsed<DraftBody> => {
+/** Body of POST /api/livekit/token (VoiceTokenInput). The emergency id is checked against the DB later. */
+export const parseVoiceTokenInput = (body: Record<string, unknown>): Parsed<VoiceTokenBody> => {
   const roomId = parseRoomId(body.roomId)
   if (!roomId.ok) return roomId
-  if (body.source !== 'voice') return fail('source must be "voice"')
-  const text = parseText(body.text)
-  if (!text.ok) return text
-  const decision = parseDecision(body.decision)
-  if (!decision.ok) return decision
-  return ok({ roomId: roomId.value, source: 'voice', text: text.value, decision: decision.value })
+  const language = parseLanguage(body.language)
+  if (!language.ok) return language
+
+  const mode = body.mode ?? 'request'
+  if (mode !== 'request' && mode !== 'emergency')
+    return fail('mode must be "request" or "emergency"')
+
+  const rawId = body.emergencyRequestId ?? null
+  if (rawId !== null && (typeof rawId !== 'string' || !isUuid(rawId))) {
+    return fail('emergencyRequestId must be a request id')
+  }
+  if (mode === 'emergency' && rawId === null) {
+    return fail('emergencyRequestId is required when mode is "emergency"')
+  }
+  if (mode === 'request' && rawId !== null) {
+    return fail('emergencyRequestId is only allowed when mode is "emergency"')
+  }
+
+  return ok({
+    roomId: roomId.value,
+    language: language.value,
+    mode,
+    emergencyRequestId: rawId,
+  })
 }
 
-export interface DraftListQuery {
-  roomId?: string
-  status: DraftStatus | 'all'
-  limit: number
+export interface RoomControlsPatch {
+  lights?: number
+  temperatureF?: number
+  blinds?: BlindsPosition
+  tv?: Partial<TvState>
 }
 
-/** Query string of GET /api/drafts: room, status (default pending, or "all"), limit. */
-export const parseDraftQuery = (params: URLSearchParams): Parsed<DraftListQuery> => {
-  const query: DraftListQuery = { status: 'pending', limit: 50 }
+const BLINDS: readonly BlindsPosition[] = ['open', 'half', 'closed']
+const CONTROL_FIELDS = ['lights', 'temperatureF', 'blinds', 'tv'] as const
+const TV_FIELDS = ['power', 'channel', 'volume'] as const
 
-  const room = params.get('room')
-  if (room) {
-    const roomId = parseRoomId(room, 'room')
-    if (!roomId.ok) return roomId
-    query.roomId = roomId.value
-  }
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
 
-  const status = params.get('status')
-  if (status) {
-    if (status !== 'all' && !isOneOf(DRAFT_STATUSES, status)) {
-      return fail(`status must be "all" or one of: ${DRAFT_STATUSES.join(', ')}`)
+const unknownKeys = (value: Record<string, unknown>, allowed: readonly string[]): string[] =>
+  Object.keys(value).filter((key) => !allowed.includes(key))
+
+/**
+ * Body of PATCH /api/rooms/[roomId]/controls: any of lights (0-100), temperatureF (50-90; the
+ * room clamps it to its own range), blinds, tv { power?, channel?, volume? }. Unknown fields are
+ * rejected so typos don't silently do nothing.
+ */
+export const parseRoomControlsPatch = (
+  body: Record<string, unknown>,
+): Parsed<RoomControlsPatch> => {
+  const extra = unknownKeys(body, CONTROL_FIELDS)
+  if (extra.length) return fail(`Unknown field(s): ${extra.join(', ')}`)
+
+  const patch: RoomControlsPatch = {}
+  if (body.lights !== undefined) {
+    if (!isFiniteNumber(body.lights) || body.lights < 0 || body.lights > 100) {
+      return fail('lights must be a number from 0 to 100')
     }
-    query.status = status
+    patch.lights = body.lights
   }
-
-  const limit = params.get('limit')
-  if (limit) {
-    const n = Number(limit)
-    if (!Number.isInteger(n) || n < 1 || n > 200) {
-      return fail('limit must be an integer from 1 to 200')
+  if (body.temperatureF !== undefined) {
+    if (!isFiniteNumber(body.temperatureF) || body.temperatureF < 50 || body.temperatureF > 90) {
+      return fail('temperatureF must be a number from 50 to 90')
     }
-    query.limit = n
+    patch.temperatureF = body.temperatureF
+  }
+  if (body.blinds !== undefined) {
+    if (!isOneOf(BLINDS, body.blinds)) return fail(`blinds must be one of: ${BLINDS.join(', ')}`)
+    patch.blinds = body.blinds
+  }
+  if (body.tv !== undefined) {
+    const tv = body.tv
+    if (!isObject(tv)) return fail('tv must be an object')
+    const extraTv = unknownKeys(tv, TV_FIELDS)
+    if (extraTv.length) return fail(`Unknown tv field(s): ${extraTv.join(', ')}`)
+    const tvPatch: Partial<TvState> = {}
+    if (tv.power !== undefined) {
+      if (typeof tv.power !== 'boolean') return fail('tv.power must be a boolean')
+      tvPatch.power = tv.power
+    }
+    if (tv.channel !== undefined) {
+      if (
+        !Number.isInteger(tv.channel) ||
+        (tv.channel as number) < 1 ||
+        (tv.channel as number) > 999
+      ) {
+        return fail('tv.channel must be an integer from 1 to 999')
+      }
+      tvPatch.channel = tv.channel as number
+    }
+    if (tv.volume !== undefined) {
+      if (!isFiniteNumber(tv.volume) || tv.volume < 0 || tv.volume > 100) {
+        return fail('tv.volume must be a number from 0 to 100')
+      }
+      tvPatch.volume = tv.volume
+    }
+    if (Object.keys(tvPatch).length === 0)
+      return fail('tv must set at least one of: power, channel, volume')
+    patch.tv = tvPatch
   }
 
-  return ok(query)
+  if (Object.keys(patch).length === 0) {
+    return fail(`Send at least one of: ${CONTROL_FIELDS.join(', ')}`)
+  }
+  return ok(patch)
 }

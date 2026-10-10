@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { connection } from 'next/server'
-import { RoomTablet } from '@/components/room/room-tablet'
+import { RoomScreen } from '@/components/room/room-screen'
 import { isRoomId } from '@/lib/room-id'
 import { isVoiceConfigured } from '@/lib/server/env'
 
@@ -16,5 +16,5 @@ export default async function RoomPage(props: PageProps<'/room/[roomId]'>) {
   const { roomId } = await props.params
   if (!isRoomId(roomId)) notFound()
 
-  return <RoomTablet roomId={roomId} voiceEnabled={isVoiceConfigured()} />
+  return <RoomScreen roomId={roomId} voiceEnabled={isVoiceConfigured()} />
 }

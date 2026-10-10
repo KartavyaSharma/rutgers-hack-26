@@ -1,8 +1,17 @@
-import { draftReadBack, patientMessage, type RouteResult } from '@bell/core'
+import { patientMessage, type RouteResult } from '@bell/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BellTools, type Classifier, type ClassifyInput } from './tools'
+import {
+  type Announcement,
+  BellTools,
+  type BellToolsOptions,
+  type Classifier,
+  type ClassifyInput,
+  EmergencyNotes,
+  joinReadBacks,
+} from './tools'
 
 const API = { appUrl: 'http://bell.test', agentSharedSecret: 'test-secret' }
+const DEBOUNCE = 300
 
 const routine = (overrides: Partial<RouteResult> = {}): RouteResult => ({
   team: 'care_aide',
@@ -18,286 +27,254 @@ const routine = (overrides: Partial<RouteResult> = {}): RouteResult => ({
 })
 
 interface Call {
+  method: string
   path: string
   body: unknown
   auth: string | null
 }
 
-/** A fake web API. Routes can be overridden per test with a status or a thrown error. */
+/** A fake web API. Routes can be made to fail per test with a status or a network error. */
 function fakeApi() {
   const calls: Call[] = []
   const failures = new Map<string, number | 'network'>()
-  let draftSeq = 0
+  let requestSeq = 0
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input))
-    const headers = new Headers(init?.headers)
+    const method = init?.method ?? 'GET'
     calls.push({
+      method,
       path: url.pathname,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
-      auth: headers.get('authorization'),
+      auth: new Headers(init?.headers).get('authorization'),
     })
-    const key = url.pathname.replace(/\/api\/drafts\/[^/]+\//, '/api/drafts/:id/')
+    const key = `${method} ${url.pathname.replace(/^\/api\/requests\/.+$/, '/api/requests/:id')}`
     const failure = failures.get(key)
     if (failure === 'network') throw new TypeError('fetch failed')
     if (failure !== undefined) return Response.json({ error: 'nope' }, { status: failure })
-    if (key === '/api/requests') return Response.json({ request: { id: 'req-1' } }, { status: 201 })
-    if (key === '/api/drafts') {
-      return Response.json({ draft: { id: `draft-${++draftSeq}` } }, { status: 201 })
+    if (key === 'POST /api/requests') {
+      return Response.json({ request: { id: `req-${++requestSeq}` } }, { status: 201 })
     }
-    if (key === '/api/drafts/:id/confirm') return Response.json({ request: { id: 'req-2' } })
-    if (key === '/api/drafts/:id/discard') return Response.json({ draft: {} })
+    if (key === 'PATCH /api/requests/:id') return Response.json({ request: {} })
     return Response.json({}, { status: 404 })
   })
-  return { calls, failures, fetchMock, paths: () => calls.map((c) => c.path) }
+  return {
+    calls,
+    failures,
+    fetchMock,
+    routes: () => calls.map((c) => `${c.method} ${c.path}`),
+  }
 }
 
 let api: ReturnType<typeof fakeApi>
+let announced: Announcement[]
 
 beforeEach(() => {
   api = fakeApi()
+  announced = []
   vi.stubGlobal('fetch', api.fetchMock)
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
-function makeTools(classify: Classifier = async () => routine()) {
-  return new BellTools({ roomId: '412', roomLanguage: 'auto', api: API, classify })
+function makeTools(
+  classify: Classifier = async () => routine(),
+  options: Partial<BellToolsOptions> = {},
+) {
+  return new BellTools({
+    roomId: '412',
+    roomLanguage: 'auto',
+    api: API,
+    classify,
+    announce: (a) => announced.push(a),
+    ...options,
+  })
 }
 
-const REQUEST = {
+/** Lets the debounced announcement fire. */
+const flush = () => vi.advanceTimersByTimeAsync(DEBOUNCE)
+
+const BLANKET = {
   request: 'can I get another blanket',
   readBack: 'An extra blanket.',
   staffSummary: 'Patient would like an extra blanket',
 }
 
-describe('classifyAndDraft', () => {
-  it('creates a draft and returns the read-back with the confirm prompt', async () => {
+describe('sendRequest', () => {
+  it('classifies, sends right away, then announces the read-back and "sent"', async () => {
     const classify = vi.fn<Classifier>(async () => routine())
     const tools = makeTools(classify)
 
-    const result = await tools.classifyAndDraft(REQUEST)
-
-    expect(classify).toHaveBeenCalledWith({
-      text: REQUEST.request,
-      language: 'auto',
-      staffSummary: REQUEST.staffSummary,
-      readBack: REQUEST.readBack,
-    } satisfies ClassifyInput)
-    expect(result).toEqual({
-      outcome: 'draft',
-      draftId: 'draft-1',
-      readBack: 'An extra blanket.',
-      say: draftReadBack(routine()),
+    expect(await tools.sendRequest(BLANKET)).toEqual({
+      outcome: 'sent',
+      requestId: 'req-1',
+      nurse: false,
     })
-    expect(tools.pendingDraftId).toBe('draft-1')
+    expect(classify).toHaveBeenCalledWith({
+      text: BLANKET.request,
+      language: 'auto',
+      staffSummary: BLANKET.staffSummary,
+      readBack: BLANKET.readBack,
+    } satisfies ClassifyInput)
     expect(api.calls).toEqual([
       {
-        path: '/api/drafts',
-        body: { roomId: '412', source: 'voice', text: REQUEST.request, decision: routine() },
+        method: 'POST',
+        path: '/api/requests',
+        body: { roomId: '412', source: 'voice', text: BLANKET.request, decision: routine() },
         auth: 'Bearer test-secret',
+      },
+    ])
+
+    expect(announced).toEqual([])
+    await flush()
+    expect(announced).toEqual([
+      {
+        say: `An extra blanket. ${patientMessage('sent', 'en')}`,
+        note: expect.stringContaining('Sent: "An extra blanket." (request req-1)'),
+      },
+    ])
+    expect(tools.sentRequestIds).toEqual(['req-1'])
+  })
+
+  it('announces two requests that land together once, as one sentence', async () => {
+    const tools = makeTools(
+      vi
+        .fn<Classifier>()
+        .mockResolvedValueOnce(routine({ patientReply: 'An extra pillow.' }))
+        .mockResolvedValueOnce(routine({ patientReply: 'Some water.' })),
+    )
+
+    await Promise.all([
+      tools.sendRequest({ ...BLANKET, readBack: 'An extra pillow.' }),
+      tools.sendRequest({ ...BLANKET, readBack: 'Some water.' }),
+    ])
+    await flush()
+
+    expect(api.routes()).toEqual(['POST /api/requests', 'POST /api/requests'])
+    expect(announced).toHaveLength(1)
+    expect(announced[0]?.say).toBe(
+      `An extra pillow and some water. ${patientMessage('sent', 'en')}`,
+    )
+    expect(tools.sentRequestIds).toEqual(['req-1', 'req-2'])
+  })
+
+  it('tells the patient the nurse was alerted for a nurse-now decision, never naming a team', async () => {
+    const tools = makeTools(async () =>
+      routine({ team: 'nurse', clinical: true, reason: 'clinical' }),
+    )
+
+    expect(await tools.sendRequest(BLANKET)).toMatchObject({ outcome: 'sent', nurse: true })
+    await flush()
+
+    expect(announced).toEqual([
+      {
+        say: patientMessage('nurse_notified', 'en'),
+        note: expect.stringContaining('Sent to the nurse right away'),
       },
     ])
   })
 
-  it('never puts the team in what the patient hears', async () => {
-    const result = await makeTools().classifyAndDraft(REQUEST)
-    expect(JSON.stringify(result)).not.toMatch(/care.?aide/i)
+  it('never says the team for a normal request', async () => {
+    const tools = makeTools()
+    await tools.sendRequest(BLANKET)
+    await flush()
+    expect(announced[0]?.say).not.toMatch(/care.?aide/i)
   })
 
-  it('sends clinical requests to the nurse right away, with no draft', async () => {
-    const tools = makeTools(async () =>
-      routine({ team: 'nurse', clinical: true, reason: 'clinical', patientReply: '' }),
-    )
-
-    const result = await tools.classifyAndDraft(REQUEST)
-
-    expect(result).toEqual({
-      outcome: 'sent_to_nurse_now',
-      say: patientMessage('nurse_notified', 'en'),
-    })
-    expect(api.paths()).toEqual(['/api/requests'])
-    expect(tools.pendingDraftId).toBeUndefined()
-  })
-
-  it('says save_failed when the draft cannot be created', async () => {
-    api.failures.set('/api/drafts', 500)
+  it('says save_failed in the patient language when the request cannot be sent', async () => {
+    api.failures.set('POST /api/requests', 500)
     const tools = makeTools(async () => routine({ language: 'es' }))
 
-    const result = await tools.classifyAndDraft(REQUEST)
+    expect(await tools.sendRequest(BLANKET)).toEqual({ outcome: 'failed' })
+    await flush()
 
-    expect(result).toEqual({ outcome: 'failed', say: patientMessage('save_failed', 'es') })
-    expect(tools.pendingDraftId).toBeUndefined()
+    expect(announced).toEqual([
+      { say: patientMessage('save_failed', 'es'), note: expect.stringContaining('Could not send') },
+    ])
+    expect(tools.sentRequestIds).toEqual([])
   })
 
-  it('says save_failed when the nurse-now request cannot be saved', async () => {
-    api.failures.set('/api/requests', 'network')
-    const tools = makeTools(async () => routine({ team: 'nurse', reason: 'red_flag' }))
-
-    const result = await tools.classifyAndDraft(REQUEST)
-
-    expect(result).toEqual({ outcome: 'failed', say: patientMessage('save_failed', 'en') })
-  })
-
-  it('lets a newer request replace an older one that is still classifying', async () => {
-    let releaseFirst: (value: RouteResult) => void = () => {}
-    const classify = vi
-      .fn<Classifier>()
-      .mockImplementationOnce(() => new Promise((resolve) => (releaseFirst = resolve)))
-      .mockImplementationOnce(async () => routine({ patientReply: 'Some water.' }))
-    const tools = makeTools(classify)
-
-    const first = tools.classifyAndDraft(REQUEST)
-    const second = await tools.classifyAndDraft({ ...REQUEST, readBack: 'Some water.' })
-    releaseFirst(routine())
-
-    expect(second).toMatchObject({ outcome: 'draft', draftId: 'draft-1' })
-    expect(await first).toEqual({ outcome: 'superseded' })
-    expect(api.paths()).toEqual(['/api/drafts'])
-    expect(tools.pendingDraftId).toBe('draft-1')
-  })
-
-  it('discards the older pending draft when a newer one is created', async () => {
-    const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
-    await tools.classifyAndDraft(REQUEST)
-    await vi.waitFor(() => expect(api.paths()).toContain('/api/drafts/draft-1/discard'))
-    expect(tools.pendingDraftId).toBe('draft-2')
-  })
-
-  it('still sends a superseded request that must go to the nurse', async () => {
-    let releaseFirst: (value: RouteResult) => void = () => {}
-    const classify = vi
-      .fn<Classifier>()
-      .mockImplementationOnce(() => new Promise((resolve) => (releaseFirst = resolve)))
-      .mockImplementationOnce(async () => routine())
-    const tools = makeTools(classify)
-
-    const first = tools.classifyAndDraft(REQUEST)
-    await tools.classifyAndDraft(REQUEST)
-    releaseFirst(routine({ team: 'nurse', clinical: true, reason: 'clinical' }))
-
-    expect(await first).toMatchObject({ outcome: 'sent_to_nurse_now' })
-    expect(api.paths()).toContain('/api/requests')
+  it('says save_failed on a network error', async () => {
+    api.failures.set('POST /api/requests', 'network')
+    expect(await makeTools().sendRequest(BLANKET)).toEqual({ outcome: 'failed' })
+    await flush()
+    expect(announced[0]?.say).toBe(patientMessage('save_failed', 'en'))
   })
 })
 
-describe('confirmDraft', () => {
-  it('confirms the pending draft', async () => {
+describe('cancelRequest', () => {
+  it('cancels the most recent request and announces "cancelled"', async () => {
     const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
+    await tools.sendRequest(BLANKET)
+    await tools.sendRequest(BLANKET)
+    await flush()
+    announced = []
 
-    const result = await tools.confirmDraft('draft-1')
-
-    expect(result).toEqual({ outcome: 'sent', say: patientMessage('sent', 'en') })
-    expect(api.calls.at(-1)).toMatchObject({
-      path: '/api/drafts/draft-1/confirm',
+    expect(await tools.cancelRequest()).toEqual({ outcome: 'cancelled', requestId: 'req-2' })
+    expect(api.calls.at(-1)).toEqual({
+      method: 'PATCH',
+      path: '/api/requests/req-2',
+      body: { action: 'cancel' },
       auth: 'Bearer test-secret',
     })
-    expect(tools.pendingDraftId).toBeUndefined()
+    expect(announced).toEqual([
+      { say: patientMessage('cancelled', 'en'), note: expect.stringContaining('Cancelled') },
+    ])
+    expect(tools.sentRequestIds).toEqual(['req-1'])
   })
 
-  it('acts on the pending draft when no id is given', async () => {
+  it('cancels a given request id', async () => {
     const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
-    expect(await tools.confirmDraft()).toMatchObject({ outcome: 'sent' })
-    expect(api.paths().at(-1)).toBe('/api/drafts/draft-1/confirm')
+    await tools.sendRequest(BLANKET)
+    await tools.sendRequest(BLANKET)
+
+    expect(await tools.cancelRequest('req-1')).toMatchObject({ requestId: 'req-1' })
+    expect(tools.sentRequestIds).toEqual(['req-2'])
   })
 
-  it('reports no_pending_draft when nothing is waiting', async () => {
-    expect(await makeTools().confirmDraft()).toEqual({ outcome: 'no_pending_draft' })
+  it('waits for a send still running, so "cancel that" cancels what was just asked for', async () => {
+    let classified: (value: RouteResult) => void = () => {}
+    const tools = makeTools(() => new Promise((resolve) => (classified = resolve)))
+
+    const sending = tools.sendRequest(BLANKET)
+    const cancelling = tools.cancelRequest('last')
+    classified(routine())
+    await sending
+
+    expect(await cancelling).toEqual({ outcome: 'cancelled', requestId: 'req-1' })
+  })
+
+  it('a correction (cancel, then send) cancels the old request, not the new one', async () => {
+    const tools = makeTools()
+    await tools.sendRequest({ ...BLANKET, readBack: 'An extra pillow.' })
+
+    const cancelled = tools.cancelRequest('last')
+    const resent = tools.sendRequest(BLANKET)
+
+    expect(await cancelled).toMatchObject({ outcome: 'cancelled', requestId: 'req-1' })
+    expect(await resent).toMatchObject({ outcome: 'sent', requestId: 'req-2' })
+    expect(tools.sentRequestIds).toEqual(['req-2'])
+  })
+
+  it('reports nothing_to_cancel without calling the API', async () => {
+    expect(await makeTools().cancelRequest()).toEqual({ outcome: 'nothing_to_cancel' })
     expect(api.calls).toEqual([])
+    expect(announced).toEqual([{ note: expect.stringContaining('no request to cancel') }])
   })
 
-  it('says save_failed and keeps the draft pending when the confirm call fails', async () => {
+  it('says nothing alarming when the cancel call fails, and keeps the request', async () => {
     const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
-    api.failures.set('/api/drafts/:id/confirm', 503)
+    await tools.sendRequest(BLANKET)
+    await flush()
+    announced = []
+    api.failures.set('PATCH /api/requests/:id', 500)
 
-    expect(await tools.confirmDraft()).toEqual({
-      outcome: 'failed',
-      say: patientMessage('save_failed', 'en'),
-    })
-    expect(tools.pendingDraftId).toBe('draft-1')
-  })
-
-  it('drops the draft when the server says it was discarded (409)', async () => {
-    const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
-    api.failures.set('/api/drafts/:id/confirm', 409)
-
-    expect(await tools.confirmDraft()).toMatchObject({ outcome: 'failed' })
-    expect(tools.pendingDraftId).toBeUndefined()
-  })
-
-  it('is a no-op success after the tablet already sent the draft', async () => {
-    const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
-
-    expect(tools.tabletConfirmed('draft-1')).toEqual({ matched: true, language: 'en' })
-    const before = api.calls.length
-
-    expect(await tools.confirmDraft()).toEqual({
-      outcome: 'sent',
-      say: patientMessage('sent', 'en'),
-    })
-    expect(await tools.confirmDraft('draft-1')).toMatchObject({ outcome: 'sent' })
-    expect(api.calls.length).toBe(before)
-  })
-})
-
-describe('tabletConfirmed', () => {
-  it('ignores drafts that are not pending', () => {
-    expect(makeTools().tabletConfirmed('draft-9')).toEqual({ matched: false })
-  })
-
-  it('handles a tap that arrives before the draft call returns', async () => {
-    const tools = makeTools()
-    tools.tabletConfirmed('draft-1')
-
-    expect(await tools.classifyAndDraft(REQUEST)).toEqual({
-      outcome: 'sent',
-      say: patientMessage('sent', 'en'),
-    })
-    expect(tools.pendingDraftId).toBeUndefined()
-  })
-})
-
-describe('cancelDraft', () => {
-  it('discards the pending draft', async () => {
-    const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
-
-    expect(await tools.cancelDraft()).toEqual({ outcome: 'cancelled' })
-    expect(api.paths().at(-1)).toBe('/api/drafts/draft-1/discard')
-    expect(tools.pendingDraftId).toBeUndefined()
-  })
-
-  it('reports no_pending_draft when nothing is waiting', async () => {
-    expect(await makeTools().cancelDraft()).toEqual({ outcome: 'no_pending_draft' })
-    expect(api.calls).toEqual([])
-  })
-
-  it('drops a classification that is still running', async () => {
-    let release: (value: RouteResult) => void = () => {}
-    const tools = makeTools(() => new Promise((resolve) => (release = resolve)))
-
-    const running = tools.classifyAndDraft(REQUEST)
-    expect(await tools.cancelDraft()).toEqual({ outcome: 'cancelled' })
-    release(routine())
-
-    expect(await running).toEqual({ outcome: 'superseded' })
-    expect(api.calls).toEqual([])
-  })
-
-  it('still reports cancelled when the discard call fails (nothing is ever sent)', async () => {
-    const tools = makeTools()
-    await tools.classifyAndDraft(REQUEST)
-    api.failures.set('/api/drafts/:id/discard', 500)
-
-    expect(await tools.cancelDraft()).toEqual({ outcome: 'cancelled' })
-    expect(tools.pendingDraftId).toBeUndefined()
+    expect(await tools.cancelRequest()).toEqual({ outcome: 'failed', requestId: 'req-1' })
+    expect(announced).toEqual([{ note: expect.stringContaining('still active') }])
+    expect(tools.sentRequestIds).toEqual(['req-1'])
   })
 })
 
@@ -306,38 +283,39 @@ describe('callMyNurse', () => {
     const tools = makeTools()
     tools.heard({ text: 'my IV arm is sore', language: 'es' })
 
-    const result = await tools.callMyNurse({ reason: 'IV site is sore', clinical: true })
-
-    expect(result).toEqual({
-      outcome: 'sent_to_nurse_now',
-      say: patientMessage('nurse_notified', 'es'),
+    expect(await tools.callMyNurse({ reason: 'IV site is sore', clinical: true })).toEqual({
+      outcome: 'sent',
+      requestId: 'req-1',
+      nurse: true,
     })
-    expect(api.calls).toEqual([
-      {
-        path: '/api/requests',
-        auth: 'Bearer test-secret',
-        body: {
-          roomId: '412',
-          source: 'voice',
-          text: 'my IV arm is sore',
-          decision: expect.objectContaining({
-            team: 'nurse',
-            category: 'nurse_call',
-            clinical: true,
-            reason: 'clinical',
-            language: 'es',
-          }),
-        },
+    expect(api.calls[0]).toEqual({
+      method: 'POST',
+      path: '/api/requests',
+      auth: 'Bearer test-secret',
+      body: {
+        roomId: '412',
+        source: 'voice',
+        text: 'my IV arm is sore',
+        decision: expect.objectContaining({
+          team: 'nurse',
+          category: 'nurse_call',
+          clinical: true,
+          reason: 'clinical',
+          language: 'es',
+        }),
       },
-    ])
+    })
+    await flush()
+    expect(announced[0]?.say).toBe(patientMessage('nurse_notified', 'es'))
   })
 
   it('says save_failed when the request cannot be saved', async () => {
-    api.failures.set('/api/requests', 500)
+    api.failures.set('POST /api/requests', 500)
     expect(await makeTools().callMyNurse({ reason: 'wants the nurse', clinical: false })).toEqual({
       outcome: 'failed',
-      say: patientMessage('save_failed', 'en'),
     })
+    await flush()
+    expect(announced[0]?.say).toBe(patientMessage('save_failed', 'en'))
   })
 })
 
@@ -346,9 +324,7 @@ describe('redFlagCheck', () => {
     const classify = vi.fn<Classifier>()
     const tools = makeTools(classify)
 
-    const result = await tools.redFlagCheck('me duele el pecho')
-
-    expect(result).toEqual({
+    expect(await tools.redFlagCheck('me duele el pecho')).toEqual({
       outcome: 'sent_to_nurse_now',
       say: patientMessage('nurse_notified', 'es'),
     })
@@ -368,10 +344,12 @@ describe('redFlagCheck', () => {
         }),
       }),
     ])
+    // Not voice-cancellable.
+    expect(tools.sentRequestIds).toEqual([])
   })
 
   it('uses the room language when one is set', async () => {
-    const tools = new BellTools({ roomId: '412', roomLanguage: 'fr', api: API })
+    const tools = makeTools(undefined, { roomLanguage: 'fr' })
     expect(await tools.redFlagCheck('I have chest pain')).toEqual({
       outcome: 'sent_to_nurse_now',
       say: patientMessage('nurse_notified', 'fr'),
@@ -384,10 +362,63 @@ describe('redFlagCheck', () => {
   })
 
   it('says save_failed when the urgent request cannot be saved', async () => {
-    api.failures.set('/api/requests', 'network')
+    api.failures.set('POST /api/requests', 'network')
     expect(await makeTools().redFlagCheck('I fell out of bed')).toEqual({
       outcome: 'failed',
       say: patientMessage('save_failed', 'en'),
     })
+  })
+})
+
+describe('EmergencyNotes', () => {
+  const notes = () => new EmergencyNotes({ requestId: 'em-1', api: API })
+
+  it('adds each turn as a note and says "noted" only the first time', async () => {
+    const emergency = notes()
+
+    expect(await emergency.add('I fell and hit my head', 'en')).toBe(
+      patientMessage('emergency_noted', 'en'),
+    )
+    expect(await emergency.add('it is bleeding a little', 'en')).toBeUndefined()
+    expect(api.calls).toEqual([
+      {
+        method: 'PATCH',
+        path: '/api/requests/em-1',
+        body: { action: 'add_note', text: 'I fell and hit my head' },
+        auth: 'Bearer test-secret',
+      },
+      {
+        method: 'PATCH',
+        path: '/api/requests/em-1',
+        body: { action: 'add_note', text: 'it is bleeding a little' },
+        auth: 'Bearer test-secret',
+      },
+    ])
+  })
+
+  it('says nothing when a note fails, and acknowledges the next one that works', async () => {
+    const emergency = notes()
+    api.failures.set('PATCH /api/requests/:id', 'network')
+    expect(await emergency.add('help', 'es')).toBeUndefined()
+
+    api.failures.clear()
+    expect(await emergency.add('me caí', 'es')).toBe(patientMessage('emergency_noted', 'es'))
+  })
+})
+
+describe('joinReadBacks', () => {
+  it('joins in the patient language', () => {
+    expect(joinReadBacks(['An extra pillow.', 'Some water.'], 'en')).toBe(
+      'An extra pillow and some water.',
+    )
+    expect(joinReadBacks(['Una almohada.', 'Agua.'], 'es')).toBe('Una almohada y agua.')
+    expect(joinReadBacks(['Ein Kissen.', 'Wasser.'], 'de')).toBe('Ein Kissen und Wasser.')
+    expect(joinReadBacks(['A pillow.', 'The TV remote.', 'Water.'], 'en')).toBe(
+      'A pillow, the TV remote, and water.',
+    )
+  })
+
+  it('leaves a single read-back as it is', () => {
+    expect(joinReadBacks(['An extra blanket.'], 'en')).toBe('An extra blanket.')
   })
 })

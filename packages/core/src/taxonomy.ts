@@ -28,7 +28,11 @@ export const URGENCY_LABELS: Record<Urgency, string> = {
 /** What the router decides for a piece of free text (typed or spoken). */
 export interface RoutingDecision {
   team: Team
-  /** Short machine-friendly label, e.g. "pain", "linen_change", "tv_remote". */
+  /**
+   * Machine-friendly label. From Jev it is a request GroupId (water_food, bathroom, comfort,
+   * reposition, beeping, cleaning, fix_something, ask_care_team) so the tablet can pick an icon;
+   * other sources may use free labels (e.g. "nurse_call").
+   */
   category: string
   urgency: Urgency
   clinical: boolean
@@ -62,15 +66,29 @@ export interface RouteResult extends RoutingDecision {
   reason: RouteReason
 }
 
-export const REQUEST_STATUSES = ['sent', 'seen', 'on_the_way', 'done'] as const
+/** Request lifecycle. The patient sees the first four as steps; cancelled ends it early. */
+export const REQUEST_STATUSES = ['sent', 'seen', 'on_the_way', 'done', 'cancelled'] as const
 export type RequestStatus = (typeof REQUEST_STATUSES)[number]
+
+/** The four steps shown to the patient (Sent, Seen, On the way, Done). */
+export const REQUEST_STEPS = [
+  'sent',
+  'seen',
+  'on_the_way',
+  'done',
+] as const satisfies readonly RequestStatus[]
 
 export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   sent: 'Sent',
   seen: 'Seen',
   on_the_way: 'On the way',
   done: 'Done',
+  cancelled: 'Cancelled',
 }
+
+/** Open = still waiting for staff. */
+export const isOpenStatus = (status: RequestStatus): boolean =>
+  status !== 'done' && status !== 'cancelled'
 
 /** How a request was made: a fixed-destination button on the screen, the nurse button, typed text or voice. */
 export const REQUEST_SOURCES = ['tile', 'nurse_button', 'typed', 'voice'] as const
@@ -100,6 +118,11 @@ export interface CallRequest {
   seenAt: string | null
   claimedAt: string | null
   doneAt: string | null
+  cancelledAt: string | null
+  /** Last time the patient tapped "Still waiting?". */
+  nudgedAt: string | null
+  /** What the patient said after an emergency call ("Tell us what's wrong"), oldest first. */
+  notes: string[]
 }
 
 /** Body for POST /api/requests from a tablet button (no auth). */
@@ -118,43 +141,25 @@ export interface RoutedRequestInput {
   decision: RouteResult
 }
 
-/** PATCH /api/requests/[id] */
-export const REQUEST_ACTIONS = ['seen', 'claim', 'done'] as const
+/**
+ * PATCH /api/requests/[id] body `{ action }`:
+ * - staff: 'seen' | 'claim' (on the way) | 'done'
+ * - patient (tablet): 'cancel' (also "I pressed this by mistake" on the emergency screen) | 'nudge' ("Still waiting?")
+ * - agent only (Bearer AGENT_SHARED_SECRET): 'add_note' with `{ text }`, appends to `notes`
+ */
+export const REQUEST_ACTIONS = ['seen', 'claim', 'done', 'cancel', 'nudge', 'add_note'] as const
 export type RequestAction = (typeof REQUEST_ACTIONS)[number]
 
 // ---------------------------------------------------------------------------
-// Drafts. Typed and spoken requests become a draft first: nothing is saved as a request until
-// the patient confirms (says yes, or taps Send). Drafts never auto-send.
-// Exception: red flags and anything the router marks clinical go to the nurse immediately
-// (see needsNurseNow), with no draft.
+// Sending. There is no confirm step: a typed or spoken request is classified and sent right
+// away. The patient can change or cancel it afterwards from My requests (PATCH cancel).
 // The patient side never names the team; the team stays in the data for the hospital side.
 // ---------------------------------------------------------------------------
 
-export const DRAFT_STATUSES = ['pending', 'confirmed', 'discarded'] as const
-export type DraftStatus = (typeof DRAFT_STATUSES)[number]
-
-export interface RequestDraft {
-  id: string
-  roomId: string
-  source: 'typed' | 'voice'
-  /** What the patient typed or said. */
-  text: string
-  /** Full routing decision (hospital side). The tablet must not show decision.team. */
-  decision: RouteResult
-  /** Read-back for the patient, in their language, e.g. "An extra pillow." Never names a team. */
-  patientText: string
-  status: DraftStatus
-  /** Set once confirmed. */
-  requestId: string | null
-  createdAt: string
-  updatedAt: string
-}
-
 /**
- * The one place that decides, per route reason, whether a result goes to the nurse right away
- * (true) or becomes a draft the patient confirms (false). Red flags, clinical and AI failures are
- * immediate; low confidence becomes a nurse draft quoting the patient's words. not_configured
- * (no API key, i.e. local dev) stays a draft so the confirm flow works without keys.
+ * Per route reason: true when the result is a safety fallback to the nurse (red flag, clinical,
+ * AI failure), so the patient hears "I've let your nurse know." instead of the normal
+ * "Sent. Someone will be with you soon." One table, so the policy is a one-line change.
  */
 export const IMMEDIATE_BY_REASON: Readonly<Record<RouteReason, boolean>> = {
   model: false,
@@ -169,33 +174,21 @@ export const IMMEDIATE_BY_REASON: Readonly<Record<RouteReason, boolean>> = {
   empty_input: false,
 }
 
-/** True when a routed result must reach the nurse right away, skipping the draft step. */
+/** True when the patient should be told the nurse was alerted (vs. a normal "sent"). */
 export const needsNurseNow = (result: RouteResult): boolean =>
   result.clinical || IMMEDIATE_BY_REASON[result.reason]
 
-/** POST /api/route response. `message` is what to show/say next, in the patient's language. */
-export type RouteResponse =
-  | { kind: 'draft'; draft: RequestDraft; message: string }
-  | { kind: 'sent'; request: CallRequest; message: string }
-
-/** Body for POST /api/drafts from the voice agent (Authorization: Bearer AGENT_SHARED_SECRET). */
-export interface DraftInput {
-  roomId: string
-  source: 'voice'
-  text: string
-  decision: RouteResult
+/** POST /api/route response: the request was created. `message` is what to show/say, in the patient's language. */
+export interface RouteResponse {
+  request: CallRequest
+  message: string
 }
 
-/**
- * LiveKit RPC method the tablet calls on the agent participant after the patient taps Send,
- * so the agent stops waiting for a spoken yes. Payload: JSON `{ "draftId": "..." }`.
- */
-export const DRAFT_CONFIRMED_RPC = 'bell.draft_confirmed'
-
-/** Events on GET /api/stream (SSE `data:` payload, JSON). Draft events only go to room subscribers. */
-export type StreamEvent =
-  | { type: 'request.created' | 'request.updated'; request: CallRequest }
-  | { type: 'draft.created' | 'draft.updated'; draft: RequestDraft }
+/** Events on GET /api/stream (SSE `data:` payload, JSON). */
+export interface StreamEvent {
+  type: 'request.created' | 'request.updated'
+  request: CallRequest
+}
 
 /** LiveKit agent name used for explicit dispatch from the token endpoint. */
 export const AGENT_NAME = 'bell-agent'
@@ -229,8 +222,9 @@ export type LanguagePreference = LanguageCode | 'auto'
 export const isLanguagePreference = (value: unknown): value is LanguagePreference =>
   value === 'auto' || isLanguageCode(value)
 
-// Display themes from the design system. Linen is the default.
-export const THEMES = ['linen', 'clay', 'night'] as const
+// Display themes from the design system. Clay is the default (the chosen Main screens);
+// Night is kept for later (night-time scheduling), with no picker on the tablet for now.
+export const THEMES = ['clay', 'night'] as const
 export type Theme = (typeof THEMES)[number]
 
 export const isTheme = (value: unknown): value is Theme =>
@@ -245,13 +239,35 @@ export interface RoomSettings {
   theme: Theme
 }
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { language: 'auto', theme: 'linen' }
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { language: 'auto', theme: 'clay' }
 
-/** Job metadata the web token endpoint attaches to the agent dispatch (JSON). */
+/**
+ * Job metadata the web token endpoint attaches to the agent dispatch (JSON).
+ * mode 'request': the normal "Make a request" conversation.
+ * mode 'emergency': opened from the emergency screen after "I need help immediately". The agent says
+ * "I'm listening. Tell us what's wrong, if you can." and appends what the patient says to the
+ * emergency request (PATCH add_note) instead of making new requests.
+ */
 export interface AgentJobMetadata {
   roomId: string
   language: LanguagePreference
+  mode: 'request' | 'emergency'
+  /** Set when mode is 'emergency'. */
+  emergencyRequestId: string | null
 }
+
+/** POST /api/livekit/token body. */
+export interface VoiceTokenInput {
+  roomId: string
+  language?: LanguagePreference
+  mode?: 'request' | 'emergency'
+  emergencyRequestId?: string
+}
+
+// Room controls (lights, temperature, blinds, TV) for the "Your room" sheet, backed by the
+// RoomControls adapter in @bell/core/adapters (the in-memory simulator for now):
+//   GET   /api/rooms/[roomId]/controls -> RoomControlsState
+//   PATCH /api/rooms/[roomId]/controls { lights?, temperatureF?, blinds?, tv? } -> RoomControlsState
 
 // ---------------------------------------------------------------------------
 // Home screen: up to 8 groups, each with up to 7 plain-word request options.
@@ -496,11 +512,21 @@ export const groupById = (id: GroupId): RequestGroup => {
   return found
 }
 
-/** The "My nurse" button. Always the nurse, never the AI. */
+/**
+ * The "I need help immediately" button. Always the nurse, urgent, never the AI. The tablet then
+ * shows the emergency screen until the request is done or the patient taps "I pressed this by mistake".
+ */
 export const NURSE_BUTTON = {
-  label: 'My nurse',
+  label: 'I need help immediately',
   team: 'nurse',
   category: 'nurse_call',
-  urgency: 'soon',
-  staffSummary: 'Patient pressed the nurse button',
+  urgency: 'urgent',
+  staffSummary: 'Patient pressed "I need help immediately"',
 } as const satisfies Omit<RequestOption, 'id'>
+
+/**
+ * The request group a stored request belongs to, for its icon on the tablet. Jev tags each
+ * classified request with a group id as its category; buttons use their option's group.
+ */
+export const groupOfCategory = (category: string): GroupId | null =>
+  isGroupId(category) ? category : null

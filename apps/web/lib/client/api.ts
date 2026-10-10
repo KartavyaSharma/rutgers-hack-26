@@ -1,11 +1,9 @@
+import type { RoomControlsState } from '@bell/core/adapters'
 import type {
   CallRequest,
-  LanguagePreference,
-  OptionId,
   RequestAction,
-  RequestDraft,
   RequestStatus,
-  RouteResponse,
+  VoiceTokenInput,
 } from '@bell/core/taxonomy'
 
 export class ApiError extends Error {
@@ -33,52 +31,33 @@ const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
   return body as T
 }
 
-const post = <T>(url: string, body: unknown) =>
-  request<T>(url, { method: 'POST', body: JSON.stringify(body) })
+const send = <T>(url: string, method: 'POST' | 'PATCH', body: unknown) =>
+  request<T>(url, { method, body: JSON.stringify(body) })
 
 export const listRequests = async (params: URLSearchParams): Promise<CallRequest[]> =>
   (await request<{ requests: CallRequest[] }>(`/api/requests?${params}`)).requests
 
-export const sendOption = async (roomId: string, optionId: OptionId): Promise<CallRequest> =>
-  (await post<{ request: CallRequest }>('/api/requests', { roomId, source: 'tile', optionId }))
-    .request
-
-export const callNurse = async (roomId: string): Promise<CallRequest> =>
-  (await post<{ request: CallRequest }>('/api/requests', { roomId, source: 'nurse_button' }))
-    .request
-
-/** Typed text: comes back as a draft to confirm, or as a request already sent to the nurse. */
-export const sendTyped = (
-  roomId: string,
-  text: string,
-  language: LanguagePreference,
-): Promise<RouteResponse> => post('/api/route', { roomId, text, language })
-
-export const listDrafts = async (params: URLSearchParams): Promise<RequestDraft[]> =>
-  (await request<{ drafts: RequestDraft[] }>(`/api/drafts?${params}`)).drafts
-
-export const confirmDraft = (
-  id: string,
-): Promise<{ draft: RequestDraft; request: CallRequest | null }> =>
-  post(`/api/drafts/${encodeURIComponent(id)}/confirm`, {})
-
-export const discardDraft = async (id: string): Promise<RequestDraft> =>
-  (await post<{ draft: RequestDraft }>(`/api/drafts/${encodeURIComponent(id)}/discard`, {})).draft
+/** "I need help immediately": an urgent nurse call. */
+export const callForHelp = async (roomId: string): Promise<CallRequest> =>
+  (
+    await send<{ request: CallRequest }>('/api/requests', 'POST', {
+      roomId,
+      source: 'nurse_button',
+    })
+  ).request
 
 const patchRequest = async (
   id: string,
   body: { action: RequestAction } | { status: RequestStatus },
 ): Promise<CallRequest> =>
-  (
-    await request<{ request: CallRequest }>(`/api/requests/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    })
-  ).request
+  (await send<{ request: CallRequest }>(`/api/requests/${encodeURIComponent(id)}`, 'PATCH', body))
+    .request
 
-export const updateRequest = (id: string, action: RequestAction): Promise<CallRequest> =>
+/** Patient actions: 'cancel' (also "I pressed this by mistake") and 'nudge' ("Still waiting?"). */
+export const requestAction = (id: string, action: 'cancel' | 'nudge'): Promise<CallRequest> =>
   patchRequest(id, { action })
 
+/** Staff dev view: set a status directly. */
 export const setRequestStatus = (id: string, status: RequestStatus): Promise<CallRequest> =>
   patchRequest(id, { status })
 
@@ -88,7 +67,21 @@ export interface VoiceToken {
   roomName: string
 }
 
-export const fetchVoiceToken = (
+export const fetchVoiceToken = (input: VoiceTokenInput): Promise<VoiceToken> =>
+  send('/api/livekit/token', 'POST', input)
+
+const controlsUrl = (roomId: string) => `/api/rooms/${encodeURIComponent(roomId)}/controls`
+
+export const getRoomControls = (roomId: string): Promise<RoomControlsState> =>
+  request(controlsUrl(roomId))
+
+export type RoomControlsPatch = Partial<
+  Pick<RoomControlsState, 'lights' | 'temperatureF' | 'blinds'> & {
+    tv: Partial<RoomControlsState['tv']>
+  }
+>
+
+export const updateRoomControls = (
   roomId: string,
-  language: LanguagePreference,
-): Promise<VoiceToken> => post('/api/livekit/token', { roomId, language })
+  patch: RoomControlsPatch,
+): Promise<RoomControlsState> => send(controlsUrl(roomId), 'PATCH', patch)

@@ -1,60 +1,78 @@
 import type { ComponentProps, ReactNode } from 'react'
 import { cn } from './cn'
 
-// 24x24 stroke icons drawn for this project. They inherit color from `currentColor`
-// and are always decorative: the text next to them carries the meaning.
+// Stroke icons on a 24px grid, drawn from the Main boards. Decorative by default
+// (aria-hidden): every control that uses one also has a visible word or an aria-label.
 const ICONS = {
-  water: (
+  globe: (
     <>
-      <path d="M6 3h12l-1.6 16.2a2 2 0 0 1-2 1.8H9.6a2 2 0 0 1-2-1.8z" />
-      <path d="M6.6 9h10.8" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18" />
     </>
   ),
+  mic: (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </>
+  ),
+  check: <path d="M5 12l5 5 9-10" />,
+  pencil: (
+    <>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+      <path d="M13.5 6.5l4 4" />
+    </>
+  ),
+  /** Alarm light, for "I need help immediately". */
+  alert: (
+    <>
+      <path d="M7 18v-5a5 5 0 0 1 10 0v5" />
+      <path d="M5 18h14v3H5z" />
+      <path d="M12 2v2.5M4.5 5.5l1.6 1.6M19.5 5.5l-1.6 1.6" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
+    </>
+  ),
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  /** Points right; rotate for back. */
+  chevron: <path d="M9 5l7 7-7 7" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </>
+  ),
+  water: <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />,
   bathroom: (
     <>
-      <rect x="5" y="3" width="6" height="7" rx="1" />
-      <path d="M3 10h18v1a7 7 0 0 1-7 7h-4a7 7 0 0 1-7-7z" />
-      <path d="M9 18l-1 3h8l-1-3" />
+      <circle cx="12" cy="4.5" r="2" />
+      <path d="M12 7.5v6.5m0 0l-3.5 7m3.5-7l3.5 7M7.5 10.5h9" />
     </>
   ),
   comfort: (
-    <>
-      <path d="M4 6.5c3 1 13 1 16 0 1 3.5 1 7.5 0 11-3-1-13-1-16 0-1-3.5-1-7.5 0-11z" />
-      <path d="M8 12c2.5.8 5.5.8 8 0" />
-    </>
+    <path d="M4 8c0-1.5 1-2 2.5-2h11C19 6 20 6.5 20 8c-1 1.3-1 6.7 0 8 0 1.5-1 2-2.5 2h-11C5 18 4 17.5 4 16c1-1.3 1-6.7 0-8z" />
   ),
-  move: (
-    <>
-      <path d="M3 21V9" />
-      <path d="M3 16h18v5" />
-      <path d="M7 13h4" />
-      <path d="M16 12V3" />
-      <path d="M13 6l3-3 3 3" />
-    </>
-  ),
-  beeping: (
-    <>
-      <rect x="3" y="6" width="11" height="12" rx="2" />
-      <path d="M5.5 12h1.75l1.25-2.5 1.5 5 1.25-2.5h1.25" />
-      <path d="M17 9a4.5 4.5 0 0 1 0 6" />
-      <path d="M19.5 6.5a8 8 0 0 1 0 11" />
-    </>
-  ),
+  move: <path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4" />,
+  beeping: <path d="M3 12h4l2-5 4 10 2-5h6" />,
   cleaning: (
     <>
-      <path d="M10 3l2 5.5 5.5 2-5.5 2L10 18l-2-5.5-5.5-2 5.5-2z" />
-      <path d="M18 15l.9 2.1 2.1.9-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z" />
-      <path d="M19 3v4M17 5h4" />
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
+      <path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" />
     </>
   ),
   fix: (
-    <path d="M14.5 4.5a4.5 4.5 0 0 0-4.2 6.1L4 16.9A2.2 2.2 0 0 0 7.1 20l6.3-6.3a4.5 4.5 0 0 0 6.1-4.2c0-.6-.1-1.1-.3-1.6l-2.7 2.7-2.6-.6-.6-2.6 2.7-2.7c-.5-.2-1-.3-1.6-.3z" />
+    <path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.5-.5-.5-2.5z" />
   ),
   question: (
     <>
-      <path d="M5 3h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
-      <path d="M9.75 7.25a2.25 2.25 0 1 1 3.1 2.1c-.5.2-.85.65-.85 1.2v.7" />
-      <path d="M12 13.25h.01" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h.01" />
     </>
   ),
   nurse: (
@@ -64,55 +82,6 @@ const ICONS = {
       <path d="M19 3v6M16 6h6" />
     </>
   ),
-  mic: (
-    <>
-      <rect x="9" y="2.5" width="6" height="11.5" rx="3" />
-      <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
-      <path d="M12 17.5V21M8.5 21h7" />
-    </>
-  ),
-  'mic-off': (
-    <>
-      <rect x="9" y="2.5" width="6" height="11.5" rx="3" />
-      <path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
-      <path d="M12 17.5V21M8.5 21h7" />
-      <path d="M3.5 3.5l17 17" />
-    </>
-  ),
-  speaker: (
-    <>
-      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
-      <path d="M15.5 9a4 4 0 0 1 0 6" />
-      <path d="M18 6.5a7.5 7.5 0 0 1 0 11" />
-    </>
-  ),
-  keyboard: (
-    <>
-      <rect x="2.5" y="6" width="19" height="12" rx="2" />
-      <path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14h8" />
-    </>
-  ),
-  send: (
-    <>
-      <path d="M21 3L3 10.5l7.5 3 3 7.5z" />
-      <path d="M10.5 13.5L21 3" />
-    </>
-  ),
-  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
-  clock: (
-    <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3.5 2" />
-    </>
-  ),
-  close: <path d="M6 6l12 12M18 6L6 18" />,
-  alert: (
-    <>
-      <path d="M10.3 3.9L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-      <path d="M12 9v4.5M12 17.5h.01" />
-    </>
-  ),
-  loader: <path d="M12 3a9 9 0 1 0 9 9" />,
 } satisfies Record<string, ReactNode>
 
 export type IconName = keyof typeof ICONS
@@ -142,7 +111,7 @@ export function Icon({ name, className, strokeWidth = 2, ...props }: IconProps) 
   )
 }
 
-/** Home request-group id (same strings as GroupId in @bell/core/taxonomy). */
+/** Request group ids (same strings as GroupId in @bell/core/taxonomy). */
 export type GroupIconKey =
   | 'water_food'
   | 'bathroom'
@@ -153,6 +122,7 @@ export type GroupIconKey =
   | 'fix_something'
   | 'ask_care_team'
 
+/** The icon for each request group, used for request cards and labels. */
 export const GROUP_ICON: Record<GroupIconKey, IconName> = {
   water_food: 'water',
   bathroom: 'bathroom',
@@ -163,8 +133,3 @@ export const GROUP_ICON: Record<GroupIconKey, IconName> = {
   fix_something: 'fix',
   ask_care_team: 'question',
 }
-
-/** Old name for GROUP_ICON (group ids equal the old tile ids). */
-export const TILE_ICON = GROUP_ICON
-/** Old name for GroupIconKey. */
-export type TileIconKey = GroupIconKey

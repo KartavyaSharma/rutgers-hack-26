@@ -1,14 +1,12 @@
 import type {
-  DraftStatus,
   OptionId,
-  RequestDraft,
   RequestSource,
   RequestStatus,
   RouteReason,
-  RouteResult,
   Team,
   Urgency,
 } from '@bell/core/taxonomy'
+import { sql } from 'drizzle-orm'
 import { boolean, index, jsonb, pgTable, real, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
@@ -37,6 +35,11 @@ export const requests = pgTable(
     seenAt: timestamptz('seen_at'),
     claimedAt: timestamptz('claimed_at'),
     doneAt: timestamptz('done_at'),
+    cancelledAt: timestamptz('cancelled_at'),
+    /** Last "Still waiting?" tap from the patient. */
+    nudgedAt: timestamptz('nudged_at'),
+    /** What the patient said after an emergency call, oldest first (appended by the agent). */
+    notes: jsonb('notes').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   },
   (t) => [
     index('requests_team_status_created_idx').on(t.team, t.status, t.createdAt),
@@ -46,26 +49,3 @@ export const requests = pgTable(
 
 export type RequestRow = typeof requests.$inferSelect
 export type NewRequestRow = typeof requests.$inferInsert
-
-/**
- * Typed or spoken requests waiting for the patient to confirm. Nothing reaches a team until
- * confirmed; confirming creates the request and links it here. Mirrors `RequestDraft`.
- */
-export const drafts = pgTable(
-  'drafts',
-  {
-    id: uuid('id').primaryKey(),
-    roomId: text('room_id').notNull(),
-    source: text('source').$type<RequestDraft['source']>().notNull(),
-    text: text('text').notNull(),
-    decision: jsonb('decision').$type<RouteResult>().notNull(),
-    patientText: text('patient_text').notNull(),
-    status: text('status').$type<DraftStatus>().notNull().default('pending'),
-    requestId: uuid('request_id').references(() => requests.id),
-    createdAt: timestamptz('created_at').notNull().defaultNow(),
-    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
-  },
-  (t) => [index('drafts_room_status_created_idx').on(t.roomId, t.status, t.createdAt)],
-)
-
-export type DraftRow = typeof drafts.$inferSelect

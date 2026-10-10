@@ -1,33 +1,57 @@
-// Patient-facing strings and the yes/no check for confirming a draft.
+// Patient-facing strings for the tablet and the voice agent.
 // Effect-free: client components import this via `@bell/core/messages`.
 // Patient-facing text never names a team.
-import { normalizeText, oneLine, replyLanguage, type SupportedLanguage } from './language'
-import type { LanguagePreference, RouteResult } from './taxonomy'
+import { oneLine, replyLanguage, type SupportedLanguage } from './language'
+import type { LanguageCode, LanguagePreference } from './taxonomy'
 
 export const PATIENT_MESSAGE_KEYS = [
-  'confirm_prompt',
   'sent',
   'nurse_notified',
   'ask_again',
-  'not_sent',
   'save_failed',
+  'emergency_listening',
+  'emergency_noted',
+  'cancelled',
+  'one_moment',
 ] as const
 export type PatientMessageKey = (typeof PATIENT_MESSAGE_KEYS)[number]
 
+// Quotation marks per language; everything else uses “ ”.
+const QUOTES: Partial<Record<SupportedLanguage, readonly [string, string]>> = {
+  fr: ['« ', ' »'],
+  de: ['„', '“'],
+  ru: ['«', '»'],
+  ja: ['「', '」'],
+}
+
+const quoted = (text: string, language: SupportedLanguage): string => {
+  const [open, close] = QUOTES[language] ?? ['“', '”']
+  return `${open}${text}${close}`
+}
+
+/**
+ * The "I need help immediately" button's label in each language. The tablet button and the
+ * save_failed message both use these, so the words always match. English equals NURSE_BUTTON.label.
+ */
+export const HELP_BUTTON_LABELS: Readonly<Record<LanguageCode | 'zh', string>> = {
+  en: 'I need help immediately',
+  es: 'Necesito ayuda inmediata',
+  fr: "J'ai besoin d'aide immédiatement",
+  de: 'Ich brauche sofort Hilfe',
+  hi: 'मुझे तुरंत मदद चाहिए',
+  ru: 'Мне срочно нужна помощь',
+  pt: 'Preciso de ajuda imediata',
+  ja: 'すぐに助けが必要です',
+  it: 'Ho bisogno di aiuto subito',
+  nl: 'Ik heb direct hulp nodig',
+  zh: '我需要紧急帮助',
+}
+
+/** The help button's label, quoted the way each language quotes a button name. */
+const helpButton = (language: SupportedLanguage): string =>
+  quoted(HELP_BUTTON_LABELS[language], language)
+
 const MESSAGES: Record<PatientMessageKey, Record<SupportedLanguage, string>> = {
-  confirm_prompt: {
-    en: 'Say yes, or tap Send.',
-    es: 'Diga sí, o toque Enviar.',
-    fr: 'Dites oui, ou touchez Envoyer.',
-    de: 'Sagen Sie Ja, oder tippen Sie auf Senden.',
-    hi: 'हाँ कहें, या भेजें पर टैप करें।',
-    ru: 'Скажите «да» или нажмите «Отправить».',
-    pt: 'Diga sim, ou toque em Enviar.',
-    ja: '「はい」と言うか、「送信」をタップしてください。',
-    it: 'Dica sì, oppure tocchi Invia.',
-    nl: 'Zeg ja, of tik op Versturen.',
-    zh: '请说“是”，或点击“发送”。',
-  },
   sent: {
     en: 'Sent. Someone will be with you soon.',
     es: 'Enviado. Alguien vendrá pronto.',
@@ -67,31 +91,70 @@ const MESSAGES: Record<PatientMessageKey, Record<SupportedLanguage, string>> = {
     nl: 'Oké. Wat heeft u nodig?',
     zh: '好的。您需要什么？',
   },
-  not_sent: {
-    en: 'Not sent yet',
-    es: 'Aún no enviado',
-    fr: 'Pas encore envoyé',
-    de: 'Noch nicht gesendet',
-    hi: 'अभी भेजा नहीं गया',
-    ru: 'Ещё не отправлено',
-    pt: 'Ainda não enviado',
-    ja: 'まだ送信されていません',
-    it: 'Non ancora inviato',
-    nl: 'Nog niet verstuurd',
-    zh: '尚未发送',
-  },
   save_failed: {
-    en: "Sorry, I couldn't send that. Please press the My nurse button.",
-    es: 'Lo siento, no pude enviarlo. Por favor, pulse el botón Mi enfermera.',
-    fr: "Désolé, je n'ai pas pu l'envoyer. Appuyez sur le bouton Mon infirmière.",
-    de: 'Entschuldigung, das konnte ich nicht senden. Bitte drücken Sie die Taste Meine Pflegekraft.',
-    hi: 'माफ़ कीजिए, यह भेजा नहीं जा सका। कृपया मेरी नर्स बटन दबाएँ।',
-    ru: 'Извините, не удалось отправить. Пожалуйста, нажмите кнопку «Моя медсестра».',
-    pt: 'Desculpe, não consegui enviar. Por favor, aperte o botão Minha enfermeira.',
-    ja: '申し訳ありません、送信できませんでした。「ナースコール」ボタンを押してください。',
-    it: 'Mi dispiace, non sono riuscito a inviarlo. Prema il pulsante Il mio infermiere.',
-    nl: 'Sorry, dat kon ik niet versturen. Druk op de knop Mijn verpleegkundige.',
-    zh: '抱歉，无法发送。请按“我的护士”按钮。',
+    en: `Sorry, I couldn't send that. If you need help, press ${helpButton('en')}.`,
+    es: `Lo siento, no pude enviarlo. Si necesita ayuda, pulse ${helpButton('es')}.`,
+    fr: `Désolé, je n'ai pas pu l'envoyer. Si vous avez besoin d'aide, appuyez sur ${helpButton('fr')}.`,
+    de: `Entschuldigung, das konnte ich nicht senden. Wenn Sie Hilfe brauchen, drücken Sie ${helpButton('de')}.`,
+    hi: `माफ़ कीजिए, यह भेजा नहीं जा सका। अगर आपको मदद चाहिए, तो ${helpButton('hi')} दबाएँ।`,
+    ru: `Извините, не удалось отправить. Если вам нужна помощь, нажмите ${helpButton('ru')}.`,
+    pt: `Desculpe, não consegui enviar. Se precisar de ajuda, toque em ${helpButton('pt')}.`,
+    ja: `申し訳ありません、送信できませんでした。助けが必要な場合は、${helpButton('ja')}を押してください。`,
+    it: `Mi dispiace, non sono riuscito a inviarlo. Se ha bisogno di aiuto, prema ${helpButton('it')}.`,
+    nl: `Sorry, dat kon ik niet versturen. Als u hulp nodig heeft, druk dan op ${helpButton('nl')}.`,
+    zh: `抱歉，无法发送。如需帮助，请按${helpButton('zh')}。`,
+  },
+  emergency_listening: {
+    en: "I'm listening. Tell us what's wrong, if you can.",
+    es: 'Le escucho. Díganos qué pasa, si puede.',
+    fr: 'Je vous écoute. Dites-nous ce qui ne va pas, si vous le pouvez.',
+    de: 'Ich höre zu. Sagen Sie uns, was los ist, wenn Sie können.',
+    hi: 'हम सुन रहे हैं। अगर हो सके, तो बताइए क्या परेशानी है।',
+    ru: 'Я слушаю. Скажите, что случилось, если можете.',
+    pt: 'Estou ouvindo. Diga-nos o que está acontecendo, se puder.',
+    ja: 'お聞きしています。できれば、どうされたか教えてください。',
+    it: 'La ascolto. Ci dica cosa succede, se può.',
+    nl: 'Ik luister. Vertel ons wat er aan de hand is, als dat lukt.',
+    zh: '我在听。如果可以，请告诉我们发生了什么。',
+  },
+  emergency_noted: {
+    en: 'Thank you. Your nurse is on the way.',
+    es: 'Gracias. Su enfermera está en camino.',
+    fr: 'Merci. Votre infirmière arrive.',
+    de: 'Danke. Ihre Pflegekraft ist unterwegs.',
+    hi: 'धन्यवाद। आपकी नर्स आ रही है।',
+    ru: 'Спасибо. Ваша медсестра уже идёт.',
+    pt: 'Obrigado. Sua enfermeira está a caminho.',
+    ja: 'ありがとうございます。看護師が向かっています。',
+    it: "Grazie. L'infermiere sta arrivando.",
+    nl: 'Dank u. Uw verpleegkundige is onderweg.',
+    zh: '谢谢。您的护士正在赶来。',
+  },
+  cancelled: {
+    en: 'Okay, I cancelled that.',
+    es: 'De acuerdo, lo he cancelado.',
+    fr: "D'accord, je l'ai annulé.",
+    de: 'In Ordnung, ich habe das abgesagt.',
+    hi: 'ठीक है, मैंने इसे रद्द कर दिया है।',
+    ru: 'Хорошо, запрос отменён.',
+    pt: 'Certo, eu cancelei isso.',
+    ja: 'わかりました。取り消しました。',
+    it: "Va bene, l'ho annullato.",
+    nl: 'Oké, ik heb dat geannuleerd.',
+    zh: '好的，已为您取消。',
+  },
+  one_moment: {
+    en: 'One moment.',
+    es: 'Un momento.',
+    fr: 'Un instant.',
+    de: 'Einen Moment.',
+    hi: 'एक पल।',
+    ru: 'Минутку.',
+    pt: 'Um momento.',
+    ja: '少々お待ちください。',
+    it: 'Un momento.',
+    nl: 'Een ogenblik.',
+    zh: '请稍等。',
   },
 }
 
@@ -101,457 +164,10 @@ export const patientMessage = (
   language: LanguagePreference | string,
 ): string => MESSAGES[key][replyLanguage(language)]
 
-const QUOTES: Partial<Record<SupportedLanguage, readonly [string, string]>> = {
-  fr: ['« ', ' »'],
-  de: ['„', '“'],
-  ru: ['«', '»'],
-  ja: ['「', '」'],
-}
+/** The help button's label for the tablet. "auto" or an unknown code gives English. */
+export const helpButtonLabel = (language: LanguagePreference | string): string =>
+  HELP_BUTTON_LABELS[replyLanguage(language)]
 
 /** The patient's own words as a one-line quote, e.g. “my thing is weird”. */
-export const quotePatientWords = (text: string, language: LanguagePreference | string): string => {
-  const [open, close] = QUOTES[replyLanguage(language)] ?? ['“', '”']
-  return `${open}${oneLine(text, 120)}${close}`
-}
-
-const NO_SPACE_LANGUAGES: ReadonlySet<SupportedLanguage> = new Set(['ja', 'zh'])
-
-/** What to show or say for a pending draft: the read-back, then how to confirm it. */
-export const draftReadBack = (result: Pick<RouteResult, 'patientReply' | 'language'>): string => {
-  const prompt = patientMessage('confirm_prompt', result.language)
-  const readBack = result.patientReply.trim()
-  if (readBack.length === 0) return prompt
-  return NO_SPACE_LANGUAGES.has(replyLanguage(result.language))
-    ? `${readBack}${prompt}`
-    : `${readBack} ${prompt}`
-}
-
-// ---------------------------------------------------------------------------
-// Confirmation: is the patient's answer to a read-back a plain yes, a plain no, or a new
-// request? Deterministic. Only an utterance made entirely of affirmations (plus filler such
-// as "please" or "thanks") is "yes"; anything with more content is "other" and gets routed again.
-// ---------------------------------------------------------------------------
-
-export type Confirmation = 'yes' | 'no' | 'other'
-
-// All languages are always accepted: patients often answer in a language other than the setting.
-const YES = [
-  // en
-  'yes',
-  'yeah',
-  'yea',
-  'yep',
-  'yup',
-  'ya',
-  'yah',
-  'sure',
-  'ok',
-  'okay',
-  'k',
-  'correct',
-  'right',
-  "that's right",
-  'that is right',
-  "that's correct",
-  'that is correct',
-  "that's it",
-  'exactly',
-  'absolutely',
-  'definitely',
-  'of course',
-  'please do',
-  'do it',
-  'go ahead',
-  'send',
-  'send it',
-  'send that',
-  'confirm',
-  'confirmed',
-  'affirmative',
-  'uh huh',
-  'mhm',
-  'mm hmm',
-  'sounds good',
-  'perfect',
-  'it is',
-  'alright',
-  'all right',
-  'fine',
-  // es
-  'sí',
-  'claro',
-  'claro que sí',
-  'por supuesto',
-  'correcto',
-  'exacto',
-  'exactamente',
-  'eso es',
-  'así es',
-  'vale',
-  'de acuerdo',
-  'dale',
-  'envíalo',
-  'envíelo',
-  'enviar',
-  'envía',
-  'mándalo',
-  'perfecto',
-  'está bien',
-  // fr
-  'oui',
-  'ouais',
-  "d'accord",
-  'exactement',
-  "c'est ça",
-  "c'est correct",
-  "c'est bon",
-  'bien sûr',
-  'envoyer',
-  'envoie',
-  'envoyez',
-  'envoie le',
-  'envoyez le',
-  'parfait',
-  'tout à fait',
-  'volontiers',
-  // de
-  'ja',
-  'jawohl',
-  'jo',
-  'genau',
-  'richtig',
-  'stimmt',
-  'klar',
-  'natürlich',
-  'senden',
-  'absenden',
-  'schicken',
-  'schick es',
-  'passt',
-  'korrekt',
-  'gerne',
-  // it
-  'sì',
-  'certo',
-  'esatto',
-  'giusto',
-  'va bene',
-  "d'accordo",
-  'invia',
-  'invialo',
-  'sicuro',
-  'certamente',
-  'perfetto',
-  'corretto',
-  // pt
-  'sim',
-  'isso',
-  'isso mesmo',
-  'exato',
-  'pode mandar',
-  'pode enviar',
-  'manda',
-  'mande',
-  'envia',
-  'com certeza',
-  'tá bom',
-  'beleza',
-  'está certo',
-  'correto',
-  'perfeito',
-  // nl
-  'jazeker',
-  'jawel',
-  'klopt',
-  'dat klopt',
-  'prima',
-  'goed',
-  'verstuur',
-  'versturen',
-  'zeker',
-  'precies',
-  'oké',
-  'akkoord',
-  // ru
-  'да',
-  'ага',
-  'конечно',
-  'верно',
-  'правильно',
-  'отправь',
-  'отправьте',
-  'отправляй',
-  'хорошо',
-  'ладно',
-  'точно',
-  'именно',
-  // ja
-  'はい',
-  'ええ',
-  'うん',
-  'そうです',
-  'そう',
-  'お願いします',
-  '送信',
-  '送って',
-  '送ってください',
-  '正しい',
-  'その通り',
-  // hi
-  'हाँ',
-  'हां',
-  'जी',
-  'जी हाँ',
-  'जी हां',
-  'ठीक है',
-  'सही है',
-  'बिल्कुल',
-  'भेज दो',
-  'भेजो',
-  'भेज दीजिए',
-  // zh
-  '是',
-  '是的',
-  '对',
-  '对的',
-  '好',
-  '好的',
-  '可以',
-  '发送',
-  '没错',
-  '嗯',
-  '行',
-]
-
-const NO = [
-  // en
-  'no',
-  'nope',
-  'nah',
-  'not now',
-  'cancel',
-  "don't",
-  "don't send",
-  "don't send it",
-  'do not send',
-  'never mind',
-  'nevermind',
-  'wrong',
-  "that's wrong",
-  "that's not right",
-  'not right',
-  'incorrect',
-  'negative',
-  'no way',
-  'stop',
-  // es
-  'cancelar',
-  'cancela',
-  'no lo envíes',
-  'no envíes',
-  'para nada',
-  'incorrecto',
-  'está mal',
-  // fr
-  'non',
-  'nan',
-  'annuler',
-  'annule',
-  'pas maintenant',
-  "n'envoie pas",
-  "n'envoyez pas",
-  "c'est faux",
-  'faux',
-  'pas du tout',
-  // de
-  'nein',
-  'nee',
-  'ne',
-  'nö',
-  'abbrechen',
-  'falsch',
-  'nicht senden',
-  'nicht schicken',
-  'auf keinen fall',
-  // it
-  'annulla',
-  'sbagliato',
-  'non inviare',
-  'per niente',
-  // pt
-  'não',
-  'errado',
-  'não envie',
-  'de jeito nenhum',
-  // nl
-  'neen',
-  'nee hoor',
-  'annuleren',
-  'fout',
-  'niet versturen',
-  'niet doen',
-  // ru
-  'нет',
-  'не надо',
-  'не нужно',
-  'отмена',
-  'отменить',
-  'неверно',
-  'неправильно',
-  'не отправляй',
-  // ja
-  'いいえ',
-  'いや',
-  'いえ',
-  '違います',
-  '違う',
-  'ちがう',
-  'キャンセル',
-  '結構です',
-  '送らないで',
-  // hi
-  'नहीं',
-  'नही',
-  'जी नहीं',
-  'ना',
-  'मत भेजो',
-  'रद्द करो',
-  'गलत',
-  // zh
-  '不',
-  '不是',
-  '不要',
-  '不用',
-  '取消',
-  '不对',
-  '没有',
-]
-
-// Words that don't change the meaning of a yes or a no.
-const FILLER = [
-  'um',
-  'umm',
-  'uh',
-  'uhm',
-  'er',
-  'erm',
-  'hmm',
-  'hm',
-  'oh',
-  'ah',
-  'well',
-  'so',
-  'just',
-  'now',
-  'please',
-  'pls',
-  'plz',
-  'thanks',
-  'thank you',
-  'thx',
-  'ty',
-  'por favor',
-  'gracias',
-  'muchas gracias',
-  'pues',
-  "s'il vous plaît",
-  "s'il te plaît",
-  'merci',
-  'merci beaucoup',
-  'bitte',
-  'danke',
-  'danke schön',
-  'grazie',
-  'per favore',
-  'obrigado',
-  'obrigada',
-  'dank je',
-  'dank u',
-  'dank je wel',
-  'alstublieft',
-  'graag',
-  'пожалуйста',
-  'спасибо',
-  'ありがとう',
-  'ありがとうございます',
-  'どうも',
-  'धन्यवाद',
-  'कृपया',
-  'शुक्रिया',
-  '谢谢',
-  '请',
-]
-
-interface Unit {
-  readonly tokens: ReadonlyArray<string>
-  readonly chars: ReadonlyArray<string>
-  readonly counts: boolean
-}
-
-const toUnits = (phrases: ReadonlyArray<string>, counts: boolean): ReadonlyArray<Unit> =>
-  phrases.map((phrase) => {
-    const normalized = normalizeText(phrase)
-    return {
-      tokens: normalized.split(' '),
-      chars: Array.from(normalized.replace(/ /g, '')),
-      counts,
-    }
-  })
-
-const FILLER_UNITS = toUnits(FILLER, false)
-const YES_UNITS = [...toUnits(YES, true), ...FILLER_UNITS]
-const NO_UNITS = [...toUnits(NO, true), ...FILLER_UNITS]
-
-/**
- * Can `items` be split entirely into units, using at least one unit that counts?
- * Dynamic programming over positions: 0 = unreachable, 1 = reachable with filler only,
- * 2 = reachable with at least one real yes/no phrase.
- */
-const segments = (
-  items: ReadonlyArray<string>,
-  units: ReadonlyArray<Unit>,
-  pick: (unit: Unit) => ReadonlyArray<string>,
-): boolean => {
-  const reach = new Array<number>(items.length + 1).fill(0)
-  reach[0] = 1
-  for (let i = 0; i < items.length; i++) {
-    const from = reach[i] ?? 0
-    if (from === 0) continue
-    for (const unit of units) {
-      const parts = pick(unit)
-      if (parts.length === 0 || i + parts.length > items.length) continue
-      if (parts.every((part, k) => items[i + k] === part)) {
-        const to = unit.counts ? 2 : from
-        const j = i + parts.length
-        if ((reach[j] ?? 0) < to) reach[j] = to
-      }
-    }
-  }
-  return reach[items.length] === 2
-}
-
-const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u
-
-/**
- * Classify a reply to a read-back. "yes" / "no" only for a bare affirmation / negation
- * (filler like "please" or "thanks" allowed); anything else, like "no, I wanted a blanket"
- * or "yes and my chest hurts", is "other" and should be routed as a new request.
- *
- * `language` is accepted for symmetry with the rest of the API; every language is always
- * recognised, because patients often answer in a language other than the room setting.
- */
-export const classifyConfirmation = (
-  text: string,
-  _language?: LanguagePreference | string,
-): Confirmation => {
-  const normalized = normalizeText(typeof text === 'string' ? text : '')
-  if (normalized.length === 0) return 'other'
-  const unspaced = UNSPACED_SCRIPT.test(normalized)
-  const items = unspaced ? Array.from(normalized.replace(/ /g, '')) : normalized.split(' ')
-  const pick = unspaced ? (unit: Unit) => unit.chars : (unit: Unit) => unit.tokens
-  const yes = segments(items, YES_UNITS, pick)
-  const no = segments(items, NO_UNITS, pick)
-  if (yes && !no) return 'yes'
-  if (no && !yes) return 'no'
-  return 'other'
-}
+export const quotePatientWords = (text: string, language: LanguagePreference | string): string =>
+  quoted(oneLine(text, 120), replyLanguage(language))

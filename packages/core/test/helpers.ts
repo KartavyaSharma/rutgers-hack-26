@@ -86,7 +86,7 @@ export const aiError = (reason: AiError.AiErrorReason): AiError.AiError =>
 // Independent of the implementation's own guard: team words patients must never see.
 export const NON_NURSE_TEAM_WORDS =
   /(^|[^\p{L}])(care ?aides?|aide|housekeeping|facilities|maintenance|food services|kitchen|IT (help|support|team)|tech support|auxiliar|limpieza|mantenimiento|cocina|aide-soignant|ménage|entretien|Hausmeister|Reinigung|Küche|manutenção|limpeza|cozinha|manutenzione|pulizie|schoonmaak|onderhoud|keuken)(?=[^\p{L}]|$)/iu
-// A draft read-back must not mention the nurse or claim anything was sent either.
+// A normal request card label must not mention the nurse or claim anything was sent either.
 export const NURSE_OR_SENT_WORDS =
   /(^|[^\p{L}])(nurse|enfermera|infirmière|Pflegekraft|enfermeira|infermiere|verpleegkundige|sent|enviado|envoyé|gesendet|let your)(?=[^\p{L}]|$)/iu
 

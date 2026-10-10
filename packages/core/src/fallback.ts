@@ -21,24 +21,25 @@ export const quoteForStaff = (text: string, language: string): string => {
 }
 
 /**
- * What the patient is told, decided by the same rule the apps use (`needsNurseNow`):
- * - goes to the nurse right away: "I've let your nurse know."
- * - empty input: "Okay. What do you need?" (there is nothing to read back)
- * - otherwise a draft: a read-back (the model's, or the patient's own words quoted).
+ * The patient-facing label for the request card, decided by the same rule the apps use for
+ * their message (`needsNurseNow`):
+ * - a safety fallback to the nurse (red flag, clinical, AI failure): "I've let your nurse know."
+ * - empty input: "Okay. What do you need?" (there is nothing to describe)
+ * - otherwise a short description: the model's / caller's, or the patient's own words quoted.
  */
 export const withPatientReply = (
   result: Omit<RouteResult, 'patientReply'>,
   text: string,
   readBack?: string,
 ): RouteResult => {
-  const draft = { ...result, patientReply: '' }
-  if (needsNurseNow(draft)) {
-    return { ...draft, patientReply: patientMessage('nurse_notified', result.language) }
+  const base = { ...result, patientReply: '' }
+  if (needsNurseNow(base)) {
+    return { ...base, patientReply: patientMessage('nurse_notified', result.language) }
   }
   if (result.reason === 'empty_input') {
-    return { ...draft, patientReply: patientMessage('ask_again', result.language) }
+    return { ...base, patientReply: patientMessage('ask_again', result.language) }
   }
-  return { ...draft, patientReply: readBack ?? quotePatientWords(text, result.language) }
+  return { ...base, patientReply: readBack ?? quotePatientWords(text, result.language) }
 }
 
 /**

@@ -44,9 +44,8 @@ export {
   RouterTimeout,
 } from './errors'
 export {
-  type Confirmation,
-  classifyConfirmation,
-  draftReadBack,
+  HELP_BUTTON_LABELS,
+  helpButtonLabel,
   PATIENT_MESSAGE_KEYS,
   type PatientMessageKey,
   patientMessage,

@@ -1,9 +1,21 @@
 import type { CallRequest } from '../taxonomy'
 
-/** A request ready to hand off: everything except what the receiving system assigns. */
+/**
+ * A request ready to hand off: everything except what the receiving system assigns
+ * (id, status, lifecycle timestamps, and the notes appended later).
+ */
 export type NewCallRequest = Omit<
   CallRequest,
-  'id' | 'status' | 'createdAt' | 'updatedAt' | 'seenAt' | 'claimedAt' | 'doneAt'
+  | 'id'
+  | 'status'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'seenAt'
+  | 'claimedAt'
+  | 'doneAt'
+  | 'cancelledAt'
+  | 'nudgedAt'
+  | 'notes'
 >
 
 /**

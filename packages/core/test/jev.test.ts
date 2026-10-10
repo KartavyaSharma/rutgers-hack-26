@@ -9,12 +9,16 @@ import {
   classifyRequest,
   classifyRequestEffect,
   DEFAULT_JEV_MODEL,
+  type GroupId,
+  groupOfCategory,
   IMMEDIATE_BY_REASON,
   Jev,
   type JevAnswers,
   makeClassifyRequest,
+  NURSE_BUTTON,
   NURSE_CLINICAL_THRESHOLD,
   needsNurseNow,
+  REQUEST_GROUPS,
   ROUTER_TIMEOUT_MS,
   RouterRateLimited,
   TEAMS,
@@ -60,10 +64,29 @@ interface Answer {
   readonly confidence?: number
   readonly clinical?: number
   readonly urgency?: Urgency
+  readonly group?: GroupId
 }
 
+/** A plausible request group per team, so most tests don't have to pick one. */
+const DEFAULT_GROUP: Record<Team, GroupId> = {
+  nurse: 'ask_care_team',
+  care_aide: 'comfort',
+  housekeeping: 'cleaning',
+  facilities: 'fix_something',
+  food: 'water_food',
+  it: 'fix_something',
+}
+
+const GROUP_IDS: ReadonlyArray<GroupId> = REQUEST_GROUPS.map((g) => g.id)
+
 /** A Jev response body as the API returns it. */
-const jevBody = ({ team, confidence = 0.95, clinical = 0.05, urgency = 'routine' }: Answer) => {
+const jevBody = ({
+  team,
+  confidence = 0.95,
+  clinical = 0.05,
+  urgency = 'routine',
+  group = DEFAULT_GROUP[team],
+}: Answer) => {
   const spread = <L extends string>(labels: ReadonlyArray<L>, chosen: L, p: number) =>
     Object.fromEntries(
       labels.map((label) => [label, label === chosen ? p : (1 - p) / (labels.length - 1)]),
@@ -83,6 +106,12 @@ const jevBody = ({ team, confidence = 0.95, clinical = 0.05, urgency = 'routine'
         choice: urgency,
         probabilities: spread(URGENCIES, urgency, 0.9),
         confidence: 0.9,
+      },
+      group: {
+        type: 'choice',
+        choice: group,
+        probabilities: spread(GROUP_IDS, group, 0.85),
+        confidence: 0.85,
       },
     },
     usage: { input_tokens: 180, output_tokens: 3 },
@@ -119,13 +148,15 @@ describe('Jev request', () => {
     const { body } = request
     expect(body.model).toBe(DEFAULT_JEV_MODEL)
     expect(body.state).toBe('can I get another blanket')
-    expect(Object.keys(body.questions)).toEqual(['team', 'clinical', 'urgency'])
+    expect(Object.keys(body.questions)).toEqual(['team', 'clinical', 'urgency', 'group'])
 
     expect(body.questions.team.type).toBe('choice')
     expect(Object.keys(body.questions.team.criteria)).toEqual([...TEAMS])
     expect(body.questions.urgency.type).toBe('choice')
     expect(Object.keys(body.questions.urgency.criteria)).toEqual([...URGENCIES])
     expect(body.questions.clinical.type).toBe('noul')
+    expect(body.questions.group.type).toBe('choice')
+    expect(Object.keys(body.questions.group.criteria)).toEqual([...GROUP_IDS])
     for (const question of Object.values(body.questions) as Array<{
       instructions: string
       criteria?: Record<string, string>
@@ -163,18 +194,20 @@ describe('Jev request', () => {
 
 describe('Jev routing', () => {
   it.each([
-    ['can I get another blanket', 'care_aide', 'routine'],
-    ['the TV remote is broken', 'facilities', 'routine'],
-    ["there's a spill by the sink", 'housekeeping', 'soon'],
-    ['my lunch tray never came', 'food', 'soon'],
-    ["the wifi isn't working on my laptop", 'it', 'routine'],
-    ['when will the doctor come by', 'nurse', 'routine'],
-  ] as const)('%j -> %s (a draft)', async (text, team, urgency) => {
-    const { fetch } = jev({ team, urgency, confidence: 0.93 })
+    ['can I get another blanket', 'care_aide', 'routine', 'comfort'],
+    ['the TV remote is broken', 'facilities', 'routine', 'fix_something'],
+    ["there's a spill by the sink", 'housekeeping', 'soon', 'cleaning'],
+    ['my lunch tray never came', 'food', 'soon', 'water_food'],
+    ["the wifi isn't working on my laptop", 'it', 'routine', 'fix_something'],
+    ['when will the doctor come by', 'nurse', 'routine', 'ask_care_team'],
+    ['could you help me sit up', 'care_aide', 'soon', 'reposition'],
+  ] as const)('%j -> %s, group %s', async (text, team, urgency, group) => {
+    const { fetch } = jev({ team, urgency, group, confidence: 0.93 })
     const result = await classifyRequest({ text }, { ...KEY, fetch })
+    expect(groupOfCategory(result.category)).toBe(group)
     expect(result).toMatchObject({
       team,
-      category: team,
+      category: group,
       urgency,
       clinical: false,
       confidence: 0.93,
@@ -256,7 +289,7 @@ describe('Jev routing', () => {
       urgency: 'urgent',
       clinical: true,
       reason: 'red_flag',
-      category: 'chest_pain',
+      category: NURSE_BUTTON.category,
       language: 'es',
       patientReply: 'Le he avisado a su enfermera.',
     })
@@ -272,7 +305,7 @@ describe('Jev routing', () => {
     )
     expect(result).toMatchObject({
       team: 'nurse',
-      category: 'care_aide',
+      category: 'comfort',
       urgency: 'urgent',
       clinical: true,
       reason: 'clinical',
@@ -300,13 +333,13 @@ describe('Jev routing', () => {
     expectWellFormed(result)
   })
 
-  it('low confidence: a nurse draft, category keeps Jev’s guess', async () => {
+  it('low confidence: to the nurse, category keeps Jev’s group', async () => {
     const { fetch } = jev({ team: 'facilities', confidence: 0.55, urgency: 'soon' })
     const text = 'the thing is doing the thing again'
     const result = await classifyRequest({ text }, { ...KEY, fetch })
     expect(result).toMatchObject({
       team: 'nurse',
-      category: 'facilities',
+      category: 'fix_something',
       urgency: 'soon',
       confidence: 0.55,
       reason: 'low_confidence',
@@ -351,6 +384,11 @@ describe('Jev failures', () => {
       'invalid_output',
     ],
     [
+      'unknown group',
+      () => json(200, jevBody({ team: 'care_aide', group: 'gift_shop' as GroupId })),
+      'invalid_output',
+    ],
+    [
       'noul out of range',
       () => json(200, jevBody({ team: 'care_aide', clinical: 1.5 })),
       'invalid_output',
@@ -365,7 +403,7 @@ describe('Jev failures', () => {
   ] as const)('%s', async (_name, respond, reason) => {
     const { fetch } = fakeFetch(respond)
     const result = await classifyRequest({ text, readBack: 'An extra blanket.' }, { ...KEY, fetch })
-    expect(result).toMatchObject({ team: 'nurse', reason, category: 'unrouted' })
+    expect(result).toMatchObject({ team: 'nurse', reason, category: NURSE_BUTTON.category })
     // These all go to the nurse right away, so the patient is told so.
     expect(IMMEDIATE_BY_REASON[reason]).toBe(true)
     expect(result.patientReply).toBe("I've let your nurse know.")
@@ -389,14 +427,14 @@ describe('Jev failures', () => {
     expectWellFormed(result)
   })
 
-  it('missing key: no network, a draft with the caller read-back', async () => {
+  it('missing key: no network, nurse decision with the caller read-back', async () => {
     const { fetch, spy } = jev({ team: 'care_aide' })
     const result = await classifyRequest({ text, readBack: 'An extra blanket.' }, { fetch })
     expect(spy).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       team: 'nurse',
       reason: 'not_configured',
-      category: 'unrouted',
+      category: NURSE_BUTTON.category,
       patientReply: 'An extra blanket.',
     })
     expect(needsNurseNow(result)).toBe(false)
@@ -449,6 +487,7 @@ describe('makeClassifyRequest with a mock Jev service', () => {
     model: 'jev-test',
     team: 'food',
     teamConfidence: 0.9,
+    group: 'water_food',
     clinical: 0.1,
     urgency: 'soon',
     ...overrides,

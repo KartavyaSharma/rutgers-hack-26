@@ -13,8 +13,9 @@ export class ConversationLLM extends cerebras.LLM {
   readonly #reasoningEffort: ReasoningEffort
 
   constructor(opts: { apiKey: string; model: string; reasoningEffort: ReasoningEffort }) {
-    // One tool call per step keeps confirm/cancel/classify ordered as the model decided.
-    super({ apiKey: opts.apiKey, model: opts.model, parallelToolCalls: false })
+    // Parallel tool calls on: "a pillow and some water" is two send_request calls in one reply,
+    // and tools return no output, so there is no second step in which to make the other call.
+    super({ apiKey: opts.apiKey, model: opts.model, parallelToolCalls: true })
     this.#reasoningEffort = opts.reasoningEffort
   }
 

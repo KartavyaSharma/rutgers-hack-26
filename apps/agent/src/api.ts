@@ -1,7 +1,7 @@
 // Client for the web API. The web app is the only writer; the agent never touches the database.
 // Every call here never rejects. Error strings carry the status or error kind only: no headers,
 // no secret, no transcript.
-import type { CallRequest, DraftInput, RequestDraft, RoutedRequestInput } from '@bell/core/taxonomy'
+import type { CallRequest, RequestAction, RoutedRequestInput } from '@bell/core/taxonomy'
 
 const TIMEOUT_MS = 3000
 
@@ -12,54 +12,48 @@ export interface ApiConfig {
 
 export type ApiFailure = { ok: false; error: string; status?: number }
 
-/** POST /api/requests: save a routed request right away (the nurse-now path). */
+/** POST /api/requests: save a routed request; it is sent right away (there is no confirm step). */
 export async function postRoutedRequest(
   input: RoutedRequestInput,
   config: ApiConfig,
 ): Promise<{ ok: true; requestId: string | undefined } | ApiFailure> {
-  const result = await post('/api/requests', input, config)
+  const result = await send('POST', '/api/requests', input, config)
   if (!result.ok) return result
   const body = await readJson<{ request?: Pick<CallRequest, 'id'> }>(result.response)
-  // Saved. The id is only for logs, so an unexpected body doesn't count as a failure.
+  // Saved. Without an id it just can't be cancelled by voice later.
   return { ok: true, requestId: body?.request?.id }
 }
 
-/** POST /api/drafts: create a pending draft the patient still has to confirm. */
-export async function createDraft(
-  input: DraftInput,
-  config: ApiConfig,
-): Promise<{ ok: true; draft: RequestDraft } | ApiFailure> {
-  const result = await post('/api/drafts', input, config)
-  if (!result.ok) return result
-  const body = await readJson<{ draft?: RequestDraft }>(result.response)
-  // Without the id we couldn't confirm or discard it later.
-  if (typeof body?.draft?.id !== 'string') return { ok: false, error: 'response had no draft id' }
-  return { ok: true, draft: body.draft }
-}
-
-/** POST /api/drafts/{id}/confirm: turns the draft into a request. Idempotent; 409 if discarded. */
-export async function confirmDraft(
-  draftId: string,
-  config: ApiConfig,
-): Promise<{ ok: true; requestId: string | undefined } | ApiFailure> {
-  const result = await post(`/api/drafts/${encodeURIComponent(draftId)}/confirm`, {}, config)
-  if (!result.ok) return result
-  const body = await readJson<{ request?: Pick<CallRequest, 'id'> }>(result.response)
-  return { ok: true, requestId: body?.request?.id }
-}
-
-/** POST /api/drafts/{id}/discard. Idempotent for pending drafts. */
-export async function discardDraft(
-  draftId: string,
+/** PATCH /api/requests/{id} `{ action: 'cancel' }`. */
+export function cancelRequest(
+  requestId: string,
   config: ApiConfig,
 ): Promise<{ ok: true } | ApiFailure> {
-  const result = await post(`/api/drafts/${encodeURIComponent(draftId)}/discard`, {}, config)
+  return patchRequest(requestId, { action: 'cancel' }, config)
+}
+
+/** PATCH /api/requests/{id} `{ action: 'add_note', text }`: appends to the request's notes. */
+export function addRequestNote(
+  requestId: string,
+  text: string,
+  config: ApiConfig,
+): Promise<{ ok: true } | ApiFailure> {
+  return patchRequest(requestId, { action: 'add_note', text }, config)
+}
+
+async function patchRequest(
+  requestId: string,
+  body: { action: RequestAction; text?: string },
+  config: ApiConfig,
+): Promise<{ ok: true } | ApiFailure> {
+  const result = await send('PATCH', `/api/requests/${encodeURIComponent(requestId)}`, body, config)
   if (!result.ok) return result
   await result.response.body?.cancel()
   return { ok: true }
 }
 
-async function post(
+async function send(
+  method: 'POST' | 'PATCH',
   path: string,
   body: unknown,
   config: ApiConfig,
@@ -67,7 +61,7 @@ async function post(
   let response: Response
   try {
     response = await fetch(`${config.appUrl}${path}`, {
-      method: 'POST',
+      method,
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${config.agentSharedSecret}`,

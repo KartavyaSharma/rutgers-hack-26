@@ -24,7 +24,9 @@ import {
   isLanguageCode,
   type LanguageCode,
   type LanguagePreference,
+  NURSE_BUTTON,
   needsNurseNow,
+  type RouteReason,
   type RouteResult,
 } from './taxonomy'
 
@@ -33,7 +35,7 @@ export const CLINICAL_THRESHOLD = 0.5
 
 /**
  * When Jev already picked the nurse, a weaker clinical signal is enough: at or above this
- * score a nurse request is treated as clinical (sent right away, no draft).
+ * score a nurse request is treated as clinical (the patient is told the nurse was alerted).
  */
 export const NURSE_CLINICAL_THRESHOLD = 0.25
 
@@ -46,7 +48,7 @@ export interface ClassifyInput {
   readonly staffSummary?: string | undefined
   /** Read-back for the patient, in their language (e.g. "An extra pillow."). Never names a team. */
   readonly readBack?: string | undefined
-  /** Category label for staff screens. Defaults to Jev's team. */
+  /** Category label. Defaults to Jev's request group (a REQUEST_GROUPS id, see groupOfCategory). */
   readonly category?: string | undefined
 }
 
@@ -74,7 +76,7 @@ const fromJev = (
   answers: JevAnswers,
 ): RouteResult => {
   const base = {
-    category: category ?? answers.team,
+    category: category ?? answers.group,
     confidence: answers.teamConfidence,
     staffSummary: quoteForStaff(text, language),
     language,
@@ -104,10 +106,30 @@ const fromJev = (
 }
 
 /**
- * Use the caller's staff summary and read-back where they apply:
+ * Whether a result carries Jev's answers. The others (red flags, failures, empty input) get the
+ * nurse button's category, "nurse_call". A full record so a new reason must be placed here.
+ */
+const ANSWERED_BY_JEV: Readonly<Record<RouteReason, boolean>> = {
+  model: true,
+  clinical: true,
+  low_confidence: true,
+  red_flag: false,
+  timeout: false,
+  rate_limited: false,
+  invalid_output: false,
+  error: false,
+  not_configured: false,
+  empty_input: false,
+}
+
+const withNurseCallCategory = (result: RouteResult): RouteResult =>
+  ANSWERED_BY_JEV[result.reason] ? result : { ...result, category: NURSE_BUTTON.category }
+
+/**
+ * Use the caller's staff summary and read-back (the request card label) where they apply:
  * - staffSummary replaces the default, except on red flags (staff see the patient's words).
- * - readBack replaces the quoted words on drafts only, and only if it names no team and
- *   doesn't claim anything was sent. Results sent right away keep "I've let your nurse know."
+ * - readBack replaces the quoted words unless the nurse was alerted, and only if it names no
+ *   team and doesn't claim anything was sent. Nurse-now results keep "I've let your nurse know."
  */
 const applyCallerText = (result: RouteResult, input: ClassifyInput): RouteResult => {
   try {
@@ -174,6 +196,7 @@ export const classifyRequestEffect = (
 
   return routed.pipe(
     recoverToNurse(text, fixedLanguage),
+    Effect.map(withNurseCallCategory),
     Effect.map((result) =>
       input === null || input === undefined ? result : applyCallerText(result, input),
     ),

@@ -1,19 +1,18 @@
 /*
  * next/font hashes family names, so the literal names in tokens.css never match.
  * This re-points the font tokens at the next/font CSS variables. Import it AFTER
- * tokens.css: the selectors match tokens.css exactly, so source order wins.
+ * tokens.css: the selectors match tokens.css, so source order wins.
  * apps/web loads: Atkinson Hyperlegible (400, 700) as --font-atkinson,
- * Fraunces (variable, opsz axis) as --font-fraunces, DM Serif Display (400) as --font-dm-serif-display.
+ * DM Serif Display (400) as --font-dm-serif-display, Fraunces (opsz) as --font-fraunces.
  */
 
 :root,
-:root[data-theme="linen"],
-[data-theme="night"] {
-  --font-heading: var(--font-fraunces), Georgia, "Times New Roman", serif;
-}
-
 [data-theme="clay"] {
   --font-heading: var(--font-dm-serif-display), Georgia, "Times New Roman", serif;
+}
+
+[data-theme="night"] {
+  --font-heading: var(--font-fraunces), Georgia, "Times New Roman", serif;
 }
 
 :root {

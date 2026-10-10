@@ -15,7 +15,7 @@ import {
   RouterRateLimited,
 } from './errors'
 import { oneLine } from './language'
-import { TEAMS, type Team, URGENCIES, type Urgency } from './taxonomy'
+import { type GroupId, REQUEST_GROUPS, TEAMS, type Team, URGENCIES, type Urgency } from './taxonomy'
 
 export const TYPESAFE_API_BASE = 'https://api.typesafe.ai'
 export const DEFAULT_JEV_MODEL = 'jev-latest'
@@ -39,7 +39,23 @@ const URGENCY_CRITERIA: Record<Urgency, string> = {
   routine: 'Can wait, for example a menu, the TV remote, or an extra blanket.',
 }
 
-/** The three questions sent with every request. Keys are ours; Jev answers under the same keys. */
+// The home screen's request groups, so a classified request gets the same icon as its button.
+const GROUP_CRITERIA: Record<GroupId, string> = {
+  water_food: 'Water, ice chips, a drink, a snack, a meal tray or anything about food.',
+  bathroom: 'Help getting to the bathroom, a bedpan or a urinal.',
+  comfort: 'Comfort items: a blanket, pillow, socks.',
+  reposition: 'Help moving, sitting up or changing position in bed.',
+  beeping: 'A device, pump or monitor is beeping or alarming.',
+  cleaning: 'Cleaning: a spill, the room, the bathroom, trash, linens.',
+  fix_something:
+    'Something broken or not working: TV, remote, lights, Wi-Fi, the tablet, bed controls, temperature, blinds.',
+  ask_care_team:
+    'A question or anything else for the care team: pain, symptoms, medication, or anything unclear.',
+}
+
+const GROUP_IDS: ReadonlyArray<GroupId> = REQUEST_GROUPS.map((group) => group.id)
+
+/** The four questions sent with every request. Keys are ours; Jev answers under the same keys. */
 export const JEV_QUESTIONS = {
   team: {
     type: 'choice',
@@ -56,6 +72,11 @@ export const JEV_QUESTIONS = {
     type: 'choice',
     instructions: 'How urgent is this request?',
     criteria: URGENCY_CRITERIA,
+  },
+  group: {
+    type: 'choice',
+    instructions: 'Which kind of request is this?',
+    criteria: GROUP_CRITERIA,
   },
 } as const
 
@@ -76,6 +97,7 @@ export const JevResponse = Schema.Struct({
     team: choiceAnswer(TEAMS),
     clinical: Schema.Struct({ type: Schema.Literal('noul'), noul: Probability }),
     urgency: choiceAnswer(URGENCIES),
+    group: choiceAnswer(GROUP_IDS),
   }),
 })
 
@@ -89,6 +111,8 @@ export interface JevAnswers {
   /** How clinical the request is, 0..1 (the "noul" answer). */
   readonly clinical: number
   readonly urgency: Urgency
+  /** The home-screen request group (REQUEST_GROUPS id) this request belongs to. */
+  readonly group: GroupId
 }
 
 export class Jev extends Context.Service<
@@ -124,6 +148,7 @@ const toAnswers = (response: typeof JevResponse.Type): JevAnswers => ({
   teamConfidence: response.answers.team.confidence,
   clinical: response.answers.clinical.noul,
   urgency: response.answers.urgency.choice,
+  group: response.answers.group.choice,
 })
 
 /** Non-2xx responses: 429 and 529 (overloaded) are rate limits, everything else an error. */

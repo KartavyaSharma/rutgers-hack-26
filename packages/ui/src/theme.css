@@ -1,6 +1,7 @@
 /*
  * Tailwind 4 mapping from utility names to the design-system variables in tokens.css
- * (plus tokens-extra.css). No raw values here.
+ * (plus tokens-extra.css). No raw color, type or size values here; only the gentle
+ * "I'm listening" breath below defines its own timing.
  *
  * `inline` makes every utility read the variable on the element itself, so a
  * [data-theme] subtree gets its own colors, not only <html>.
@@ -23,11 +24,13 @@
   --text-caption: var(--text-caption);
   --text-body: var(--text-body);
   --text-lead: var(--text-lead);
+  --text-label: var(--text-label);
   --text-title: var(--text-title);
   --text-heading: var(--text-heading);
   --text-display: var(--text-display);
   --text-display-lg: var(--text-display-lg);
   --text-display-xl: var(--text-display-xl);
+  --text-hero: var(--text-hero);
 
   --leading-tight: var(--leading-tight);
   --leading-body: var(--leading-body);
@@ -47,11 +50,13 @@
   --text-caption--line-height: var(--leading-body);
   --text-body--line-height: var(--leading-body);
   --text-lead--line-height: var(--leading-body);
+  --text-label--line-height: var(--leading-body);
   --text-title--line-height: var(--leading-tight);
   --text-heading--line-height: var(--leading-tight);
   --text-display--line-height: var(--leading-tight);
   --text-display-lg--line-height: var(--leading-tight);
   --text-display-xl--line-height: var(--leading-tight);
+  --text-hero--line-height: var(--leading-tight);
 
   /* Aliases so text-xs .. text-5xl land on the design-system scale (never below 18px). */
   --text-xs: var(--text-caption);
@@ -84,6 +89,12 @@
   --spacing-disc: var(--size-disc);
   --spacing-disc-lg: var(--size-disc-lg);
   --spacing-disc-xl: var(--size-disc-xl);
+  --spacing-disc-listen: var(--size-disc-listen);
+  --spacing-tap-xl: var(--size-tap-xl);
+  --spacing-ring: var(--size-ring);
+  --spacing-column: var(--size-column);
+  --spacing-dialog: var(--size-dialog);
+  --spacing-sheet: var(--size-sheet);
 
   /* Design-system spacing as named steps (p-space-4, gap-space-7 ...). Tailwind's numeric
      spacing (p-4 = 16px) is left as is. */
@@ -97,14 +108,28 @@
   --spacing-space-8: var(--space-8);
   --spacing-space-9: var(--space-9);
   --spacing-space-10: var(--space-10);
+  --spacing-space-11: var(--space-11);
+  --spacing-space-12: var(--space-12);
+}
 
-  /* Motion (tokens-extra.css) */
-  --animate-listen: var(--anim-listen);
-  --animate-dot: var(--anim-dot);
-  --animate-sheet-in: var(--anim-sheet-in);
-  --animate-sheet-out: var(--anim-sheet-out);
-  --animate-fade-in: var(--anim-fade-in);
-  --animate-fade-out: var(--anim-fade-out);
+/* Motion. The emergency ripple comes from tokens.css (it is `none` under reduced motion);
+   the gentle "I'm listening" breath is only used behind motion-safe:. */
+@theme inline {
+  --animate-ripple: var(--anim-ripple);
+}
+
+@theme {
+  --animate-ripple-soft: bell-breathe 2.4s ease-in-out infinite;
+
+  @keyframes bell-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.04);
+    }
+  }
 }
 
 /* Colors: bg-bg, bg-surface, text-ink, text-muted, border-border, bg-action, text-on-action,
@@ -122,14 +147,20 @@
   --color-action: var(--action);
   --color-action-strong: var(--action-strong);
   --color-action-tint: var(--action-tint);
+  /* Outer ring of the listening mic. */
+  --color-action-tint-soft: var(--action-tint-soft);
   --color-action-ink: var(--action-ink);
   --color-on-action: var(--on-action);
 
-  /* Reserved for the nurse call and urgent items. */
+  /* Reserved for the nurse call and urgent help. */
   --color-nurse: var(--nurse);
   --color-nurse-tint: var(--nurse-tint);
   --color-nurse-ink: var(--nurse-ink);
   --color-on-nurse: var(--on-nurse);
+  /* On the red help button and emergency screen: secondary text, outlines, the icon disc. */
+  --color-on-nurse-muted: var(--on-nurse-muted);
+  --color-on-nurse-line: var(--on-nurse-line);
+  --color-on-nurse-disc: var(--on-nurse-disc);
 
   --color-state-sent: var(--state-sent);
   --color-state-sent-ink: var(--state-sent-ink);
@@ -139,10 +170,6 @@
   --color-state-on-the-way-ink: var(--state-on-the-way-ink);
   --color-state-done: var(--state-done);
   --color-state-done-ink: var(--state-done-ink);
-
-  /* tokens-extra.css */
-  --color-warn-tint: var(--warn-tint);
-  --color-warn-ink: var(--warn-ink);
 
   --color-focus: var(--focus);
   --color-scrim: var(--scrim);
