@@ -121,3 +121,16 @@ export const readPatient = async (roomId: string): Promise<PatientInRoom> => {
   const demo = DEMO[roomId]
   return demo ? { roomId, ...demo } : { roomId, firstName: null, bed: null, chart: NO_LIMITS }
 }
+
+/** Every room with a patient admitted in Epic, as its tablet would greet them. */
+export const tabletRooms = async (): Promise<PatientInRoom[]> => {
+  let rooms = Object.keys(DEMO)
+  try {
+    const admitted = (await hospital().patients()).map((p) => p.location.room).filter(Boolean)
+    if (admitted.length > 0) rooms = admitted
+  } catch (error) {
+    console.warn('[patient] could not list rooms from the hospital record, using demo data', error)
+  }
+  const unique = [...new Set(rooms)].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+  return Promise.all(unique.map(readPatient))
+}

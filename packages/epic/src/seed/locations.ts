@@ -12,6 +12,7 @@ const ROOMS: Record<string, string[]> = {
   '420': [],
   '422': [],
   '424': [],
+  '426': [],
 }
 
 /** Location id for a room ("loc-414") or a bed ("loc-412A"). */
