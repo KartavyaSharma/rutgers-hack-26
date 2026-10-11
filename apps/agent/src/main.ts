@@ -28,5 +28,7 @@ cli.runApp(
     agent: agentFile,
     // Explicit dispatch: the web token endpoint dispatches this name with { roomId } metadata.
     agentName: AGENT_NAME,
+    // Keep processes ready so a mic tap doesn't wait ~1 s for a fresh one (dev mode keeps none).
+    numIdleProcesses: 2,
   }),
 )

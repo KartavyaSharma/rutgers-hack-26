@@ -28,6 +28,7 @@ import {
   type ChatContext,
   type ChatMessage,
   defineAgent,
+  getJobContext,
   type JobContext,
   llm,
   log,
@@ -257,6 +258,23 @@ function toolStarted(session: voice.AgentSession): void {
   if (agent instanceof BellAgent) agent.toolStarted()
 }
 
+// Leaves the room once the goodbye has played (the next time the agent is back to listening),
+// so the tablet drops out of listening mode. 5 s fallback in case no state change arrives.
+function hangUpAfterReply(session: voice.AgentSession) {
+  let done = false
+  const leave = () => {
+    if (done) return
+    done = true
+    session.off(voice.AgentSessionEventTypes.AgentStateChanged, onState)
+    setTimeout(() => getJobContext().shutdown('patient finished'), 300)
+  }
+  const onState = (ev: voice.AgentStateChangedEvent) => {
+    if (ev.newState === 'listening' || ev.newState === 'idle') leave()
+  }
+  session.on(voice.AgentSessionEventTypes.AgentStateChanged, onState)
+  setTimeout(leave, 5000)
+}
+
 // Each tool returns nothing right away: with no output the framework skips the follow-up LLM
 // reply, so the patient hears the phrase once. The work runs in the background and BellTools
 // announces the result (and adds a [bell] note for the LLM).
@@ -319,6 +337,16 @@ function buildTools(bell: BellTools) {
       execute: async (args, { ctx }) => {
         toolStarted(ctx.session)
         void bell.callMyNurse(args, ctx.speechHandle?.id)
+        return undefined
+      },
+    }),
+    end_conversation: llm.tool({
+      description:
+        'Close the conversation when the patient is done, e.g. "thank you", "that\'s all", "no, I\'m ' +
+        'good", and nothing is left to do. Say only "Sure." (or "You\'re welcome.") in the same reply.',
+      parameters: z.object({}),
+      execute: async (_args, { ctx }) => {
+        hangUpAfterReply(ctx.session)
         return undefined
       },
     }),
