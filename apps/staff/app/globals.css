@@ -1,0 +1,126 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-strong: var(--ink-strong);
+  --color-faint: var(--faint);
+  --color-rail: var(--rail);
+  --color-column: var(--column);
+  --color-subtle: var(--subtle);
+  --color-urgent: var(--urgent);
+  --color-urgent-foreground: var(--urgent-foreground);
+  --color-high: var(--high);
+  --color-high-foreground: var(--high-foreground);
+  --color-high-border: var(--high-border);
+  --color-alert: var(--alert);
+  --color-stuck: var(--stuck);
+  --color-chart-line: var(--chart-line);
+  --color-chart-band: var(--chart-band);
+  --font-sans: var(--font-inter), "Segoe UI", system-ui, sans-serif;
+}
+
+/* Bell warm palette (staff screens canvas). Color mostly means urgency. */
+:root {
+  --radius: 0.75rem;
+  --background: #f6f3ee;
+  --foreground: #2a2622;
+  --card: #ffffff;
+  --card-foreground: #2a2622;
+  --popover: #ffffff;
+  --popover-foreground: #2a2622;
+  --primary: #2a2622;
+  --primary-foreground: #ffffff;
+  --secondary: #f1ede7;
+  --secondary-foreground: #2a2622;
+  --muted: #efeae3;
+  --muted-foreground: #6b635a;
+  --accent: #f1ede7;
+  --accent-foreground: #2a2622;
+  --destructive: #b5492d;
+  --destructive-foreground: #ffffff;
+  --border: #e2dcd3;
+  --input: #d6cfc5;
+  --ring: #2a2622;
+  --chart-1: #3a342e;
+  --chart-2: #8a8178;
+  --chart-3: #b8afa4;
+  --chart-4: #d9822b;
+  --chart-5: #a33a22;
+  --sidebar: #ede8e1;
+  --sidebar-foreground: #2a2622;
+  --sidebar-primary: #2a2622;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e4ded5;
+  --sidebar-accent-foreground: #2a2622;
+  --sidebar-border: #e2dcd3;
+  --sidebar-ring: #2a2622;
+
+  /* Bell-specific */
+  --ink-soft: #5e574f; /* body text that is not the main line */
+  --ink-strong: #4a433b;
+  --faint: #8a8178; /* placeholders, axis labels */
+  --rail: #ede8e1; /* left rail on Incoming */
+  --column: #efeae3; /* board columns */
+  --subtle: #f1ede7; /* hover, quiet fills */
+  --urgent: #b5492d; /* URGENT tag and urgent cards, filled */
+  --urgent-foreground: #ffffff;
+  --high: #fbebd3; /* HIGH tag fill */
+  --high-foreground: #6e4410;
+  --high-border: #f1d3a8;
+  --alert: #a33a22; /* red text: out-of-range vitals, allergies, DNR, due meds */
+  --stuck: #d9822b; /* small dot when another team has not picked it up */
+  --chart-line: #3a342e;
+  --chart-band: #f3efe9; /* normal range band behind vitals lines */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
