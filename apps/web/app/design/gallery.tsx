@@ -3,8 +3,10 @@
 import { isLanguagePreference } from '@bell/core/taxonomy'
 import {
   AppHeader,
-  type BlindsPosition,
   Button,
+  CategoryButton,
+  ChartNotice,
+  ChartTags,
   type ButtonSize,
   type ButtonVariant,
   type ConversationItem,
@@ -17,18 +19,21 @@ import {
   ICON_NAMES,
   Icon,
   LanguagePicker,
+  MicTile,
   type MyRequestItem,
   MyRequestsSheet,
+  OptionTile,
   RequestCard,
   RequestPanel,
   type RequestPanelState,
   RequestSentCard,
-  RoomControls,
   type SentCardItem,
   Sheet,
+  SomethingElseTile,
   STEP_LABELS,
   type StepStatus,
   StepTrack,
+  TitleRow,
   type VoiceStatus,
   VoiceStatusBar,
 } from '@bell/ui'
@@ -244,12 +249,14 @@ function ThemePanel({ theme }: { theme: (typeof THEMES)[number] }) {
       <Block title="AppHeader">
         <div className="rounded-lg border-2 border-dashed border-border p-4">
           <AppHeader
-            title="Room 412"
-            subtitle="Tap to request help"
+            title="Hi, Maria"
+            subtitle="Room 412 · Bed 3"
             languageLabel="English"
             onLanguage={() => {}}
-            roomStatus="70° · Lights 60%"
-            onRoom={() => {}}
+            voiceOnly={false}
+            onVoiceOnly={() => {}}
+            onMyRequests={() => {}}
+            requestCount={2}
           />
         </div>
       </Block>
@@ -310,6 +317,7 @@ function ThemePanel({ theme }: { theme: (typeof THEMES)[number] }) {
         <div className="grid grid-cols-2 gap-4">
           <HelpButton onPress={() => {}} className="h-[300px]" />
           <HelpButton onPress={() => {}} busy className="h-[300px]" />
+          <HelpButton onPress={() => {}} size="short" />
         </div>
       </Block>
 
@@ -343,8 +351,32 @@ function ThemePanel({ theme }: { theme: (typeof THEMES)[number] }) {
         <OverlayDemos container={container} />
       </Block>
 
-      <Block title="RoomControls" note="Stepper (Lights, Temperature) and ToggleTile (Blinds, TV)">
-        <RoomControlsDemo />
+      <Block title="MicTile" note="Voice only off: idle and listening">
+        <div className="grid h-[340px] max-w-[580px] grid-cols-2 gap-4">
+          <MicTile state="idle" onPress={() => {}} />
+          <MicTile state="listening" onPress={() => {}} />
+        </div>
+      </Block>
+
+      <Block title="CategoryButton, OptionTile, SomethingElseTile, TitleRow">
+        <div className="grid max-w-[680px] gap-3">
+          <TitleRow title="Food and drink" onBack={() => {}} />
+          <div className="grid auto-rows-[112px] grid-cols-2 gap-3">
+            <CategoryButton label="Food and drink" examples="Water, ice, meals" icon="water" onPress={() => {}} />
+            <OptionTile label="Water" sub="A cup or a pitcher" onPress={() => {}} />
+            <SomethingElseTile onPress={() => {}} />
+          </div>
+        </div>
+      </Block>
+
+      <Block title="ChartNotice and ChartTags" note="Note when options were left out; tags when menus were only filtered">
+        <div className="grid max-w-[640px] gap-3">
+          <ChartNotice
+            title="Nothing to eat or drink until after your ultrasound"
+            body="Your stomach needs to be empty for clear pictures."
+          />
+          <ChartTags tags={['Low sugar diet', 'No peanuts']} />
+        </div>
       </Block>
 
       <Block
@@ -452,7 +484,7 @@ function SentCardDemo({ card }: { card: (typeof SENT_CARDS)[number] }) {
 
 function OverlayDemos({ container }: { container: HTMLElement | null }) {
   const [open, setOpen] = useState<
-    'nurse' | 'all-set' | 'room' | 'requests' | 'requests-empty' | null
+    'nurse' | 'all-set' | 'sheet' | 'requests' | 'requests-empty' | null
   >(null)
   const close = (isOpen: boolean) => {
     if (!isOpen) setOpen(null)
@@ -465,8 +497,8 @@ function OverlayDemos({ container }: { container: HTMLElement | null }) {
       <Button variant="secondary" onClick={() => setOpen('all-set')}>
         You're all set
       </Button>
-      <Button variant="secondary" onClick={() => setOpen('room')}>
-        Your room sheet
+      <Button variant="secondary" onClick={() => setOpen('sheet')}>
+        Sheet
       </Button>
       <Button variant="secondary" onClick={() => setOpen('requests')}>
         My requests
@@ -509,8 +541,8 @@ function OverlayDemos({ container }: { container: HTMLElement | null }) {
           </>
         }
       />
-      <Sheet open={open === 'room'} onOpenChange={close} container={container} title="Your room">
-        <RoomControlsDemo />
+      <Sheet open={open === 'sheet'} onOpenChange={close} container={container} title="Sheet">
+        <p className="text-lead text-muted">Any content.</p>
       </Sheet>
       <MyRequestsSheet
         open={open === 'requests' || open === 'requests-empty'}
@@ -522,25 +554,6 @@ function OverlayDemos({ container }: { container: HTMLElement | null }) {
         onCancel={() => {}}
       />
     </div>
-  )
-}
-
-function RoomControlsDemo() {
-  const [lights, setLights] = useState(60)
-  const [temperatureF, setTemperatureF] = useState(70)
-  const [blinds, setBlinds] = useState<BlindsPosition>('open')
-  const [tvOn, setTvOn] = useState(false)
-  return (
-    <RoomControls
-      lights={lights}
-      temperatureF={temperatureF}
-      blinds={blinds}
-      tvOn={tvOn}
-      onLights={setLights}
-      onTemperature={setTemperatureF}
-      onBlinds={setBlinds}
-      onTv={setTvOn}
-    />
   )
 }
 

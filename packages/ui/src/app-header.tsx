@@ -1,53 +1,58 @@
 import { cn, focusRing, pressable } from './cn'
-import { Icon, type IconName } from './icon'
+import { Icon } from './icon'
 
 const pill = cn(
-  'inline-flex min-h-tap items-center gap-2.5 rounded-pill border-2 border-border bg-surface py-2 pr-5 pl-4 font-body text-body font-bold text-ink',
+  'inline-flex min-h-tap items-center gap-2.5 whitespace-nowrap rounded-pill border-2 border-border bg-surface py-2 pr-5 pl-4 font-body text-body font-bold text-ink',
   pressable,
   focusRing,
 )
 
-function HeaderButton({
-  icon,
-  label,
-  ariaLabel,
-  onPress,
-}: {
-  icon: IconName
-  label: string
-  ariaLabel?: string
-  onPress: () => void
-}) {
+/** The Voice only switch drawn inside its pill. The whole pill is the tap target. */
+function Toggle({ on }: { on: boolean }) {
   return (
-    <button type="button" onClick={onPress} aria-label={ariaLabel} className={pill}>
-      <Icon name={icon} className="text-action-ink" />
-      {label}
-    </button>
+    <span
+      aria-hidden="true"
+      className={cn(
+        'relative h-[30px] w-[52px] shrink-0 rounded-pill transition-colors duration-(--motion-duration)',
+        on ? 'bg-action' : 'bg-border-strong/40',
+      )}
+    >
+      <span
+        className={cn(
+          'absolute top-[3px] size-6 rounded-pill bg-surface transition-[left] duration-(--motion-duration)',
+          on ? 'left-[25px]' : 'left-[3px]',
+        )}
+      />
+    </span>
   )
 }
 
 export interface AppHeaderProps {
-  /** "Room 412" */
+  /** "Hi, Maria" */
   title: string
-  /** Line under the title, e.g. "Tap to request help". */
+  /** "Room 412 · Bed 3" */
   subtitle?: string
   /** Current language, e.g. "English". */
   languageLabel: string
   onLanguage: () => void
-  /** Short room status, e.g. "70° · Lights 60%". */
-  roomStatus?: string
-  onRoom: () => void
+  voiceOnly: boolean
+  onVoiceOnly: (on: boolean) => void
+  /** Shown with voice only off: the My requests pill and its open count. */
+  onMyRequests?: () => void
+  requestCount?: number
   className?: string
 }
 
-/** Tablet header: room name on the left, Language and Room buttons on the right. */
+/** Tablet header: greeting and room on the left; My requests, Voice only and Language pills. */
 export function AppHeader({
   title,
   subtitle,
   languageLabel,
   onLanguage,
-  roomStatus,
-  onRoom,
+  voiceOnly,
+  onVoiceOnly,
+  onMyRequests,
+  requestCount = 0,
   className,
 }: AppHeaderProps) {
   return (
@@ -57,17 +62,36 @@ export function AppHeader({
         {subtitle ? <p className="text-body text-muted">{subtitle}</p> : null}
       </div>
       <div className="flex gap-2.5">
-        <HeaderButton
-          icon="globe"
-          label={languageLabel}
-          ariaLabel={`Language: ${languageLabel}. Change language`}
-          onPress={onLanguage}
-        />
-        <HeaderButton
-          icon="sliders"
-          label={roomStatus ? `Room · ${roomStatus}` : 'Your room'}
-          onPress={onRoom}
-        />
+        {onMyRequests ? (
+          <button type="button" onClick={onMyRequests} className={pill}>
+            <Icon name="list" className="text-action-ink" />
+            My requests
+            {requestCount > 0 ? (
+              <span className="min-w-7 rounded-[14px] bg-action px-2.5 py-0.5 text-center text-caption text-on-action">
+                {requestCount}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={voiceOnly}
+          onClick={() => onVoiceOnly(!voiceOnly)}
+          className={cn(pill, 'gap-3 pr-3.5 pl-5')}
+        >
+          Voice only
+          <Toggle on={voiceOnly} />
+        </button>
+        <button
+          type="button"
+          onClick={onLanguage}
+          aria-label={`Language: ${languageLabel}. Change language`}
+          className={pill}
+        >
+          <Icon name="globe" className="text-action-ink" />
+          {languageLabel}
+        </button>
       </div>
     </header>
   )

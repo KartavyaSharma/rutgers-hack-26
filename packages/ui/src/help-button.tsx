@@ -8,19 +8,23 @@ export interface HelpButtonProps extends Omit<ComponentProps<'button'>, 'childre
   busy?: boolean
   label?: string
   busyLabel?: string
+  /** tall: the voice only column; short: above the mic with voice only off. */
+  size?: 'tall' | 'short'
 }
 
-/** The big red "I need help immediately" card. Red is reserved for this and urgent states. */
+/** The red "I have an emergency" button. Red is reserved for this and urgent states. */
 export function HelpButton({
   onPress,
   busy = false,
-  label = 'I need help immediately',
+  label = 'I have an emergency',
   busyLabel = 'Calling your nurse…',
+  size = 'tall',
   className,
   type = 'button',
   disabled,
   ...props
 }: HelpButtonProps) {
+  const short = size === 'short'
   return (
     <button
       type={type}
@@ -28,7 +32,10 @@ export function HelpButton({
       disabled={disabled || busy}
       aria-busy={busy}
       className={cn(
-        'flex min-h-[180px] flex-col justify-between rounded-lg bg-nurse p-7 text-left text-on-nurse',
+        'flex rounded-lg bg-nurse text-left text-on-nurse',
+        short
+          ? 'h-tile shrink-0 items-center gap-3.5 rounded-md px-5'
+          : 'min-h-[180px] flex-col justify-between p-7',
         'disabled:cursor-progress',
         pressable,
         focusRing,
@@ -36,10 +43,22 @@ export function HelpButton({
       )}
       {...props}
     >
-      <span className="flex size-disc-lg items-center justify-center rounded-pill bg-on-nurse-disc">
-        <Icon name="alert" className="size-10" />
+      <span
+        className={cn(
+          'flex shrink-0 items-center justify-center rounded-pill bg-on-nurse-disc',
+          short ? 'size-[52px]' : 'size-disc-lg',
+        )}
+      >
+        <Icon name="alert" className={short ? 'size-7' : 'size-10'} />
       </span>
-      <span className="font-heading text-display leading-tight">{busy ? busyLabel : label}</span>
+      <span
+        className={cn(
+          'font-heading leading-tight',
+          short ? 'text-[25px] leading-[1.1]' : 'text-display',
+        )}
+      >
+        {busy ? busyLabel : label}
+      </span>
     </button>
   )
 }

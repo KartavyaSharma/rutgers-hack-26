@@ -1,7 +1,13 @@
 'use client'
 
 import type { LanguagePreference } from '@bell/core/taxonomy'
-import type { Participant, RemoteParticipant, RemoteTrack, Room } from 'livekit-client'
+import type {
+  LocalAudioTrack,
+  Participant,
+  RemoteParticipant,
+  RemoteTrack,
+  Room,
+} from 'livekit-client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, fetchVoiceToken } from '@/lib/client/api'
 
@@ -28,6 +34,9 @@ const AGENT_JOIN_TIMEOUT_MS = 15_000
 const MAX_SESSION_MS = 5 * 60_000
 
 const AGENT_STATE_ATTRIBUTE = 'lk.agent.state'
+
+/** The LiveKit client is loaded when the screen opens, so the first tap doesn't wait for it. */
+const loadLiveKit = () => import('livekit-client')
 
 const fromAgentState = (value: string | undefined): VoiceState | null => {
   switch (value) {
@@ -118,10 +127,16 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
       setMode(nextMode)
       setTranscript([])
       setState('connecting')
+      let micTrack: Promise<LocalAudioTrack> | null = null
+      const releaseMic = () => void micTrack?.then((track) => track.stop()).catch(() => {})
 
       try {
-        const [{ Room, RoomEvent, Track }, token] = await Promise.all([
-          import('livekit-client'),
+        const livekit = await loadLiveKit()
+        const { Room, RoomEvent, Track } = livekit
+        // The mic opens while the token and connection are under way, not after them.
+        micTrack = livekit.createLocalAudioTrack()
+        micTrack.catch(() => {})
+        const [token] = await Promise.all([
           fetchVoiceToken({
             roomId,
             language,
@@ -129,7 +144,10 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
             ...(emergencyRequestId ? { emergencyRequestId } : {}),
           }),
         ])
-        if (!isCurrent()) return
+        if (!isCurrent()) {
+          releaseMic()
+          return
+        }
 
         const room = new Room({ adaptiveStream: false, dynacast: false })
 
@@ -215,6 +233,10 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
           .on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
             if (participant.isAgent) onAgentJoined(participant)
           })
+          // The agent leaves when the patient is done ("thank you", "that's all").
+          .on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+            if (participant.isAgent && connected && isCurrent()) void stop()
+          })
           .on(RoomEvent.ParticipantAttributesChanged, (changed, participant) => {
             if (!participant.isAgent || !(AGENT_STATE_ATTRIBUTE in changed)) return
             const next = fromAgentState(changed[AGENT_STATE_ATTRIBUTE])
@@ -256,11 +278,12 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
         await room.connect(token.serverUrl, token.participantToken)
         connected = true
         if (!isCurrent()) {
+          releaseMic()
           await room.disconnect()
           return
         }
         await room.startAudio().catch(() => {})
-        await room.localParticipant.setMicrophoneEnabled(true)
+        await room.localParticipant.publishTrack(await micTrack)
         if (!isCurrent()) return
         set('listening')
 
@@ -278,6 +301,7 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
           if (isCurrent()) void stop()
         }, MAX_SESSION_MS)
       } catch (err) {
+        releaseMic()
         if (!isCurrent()) return
         if (err instanceof ApiError && err.code === 'voice_not_configured') setNotConfigured(true)
         console.error('[voice] could not start', err)
@@ -308,6 +332,11 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
       console.warn(`[voice] the agent did not take ${method}`, err)
     }
   }, [])
+
+  // Load the LiveKit client up front (see loadLiveKit).
+  useEffect(() => {
+    if (enabled) void loadLiveKit()
+  }, [enabled])
 
   // Hang up when the page goes away.
   useEffect(

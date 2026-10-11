@@ -12,6 +12,9 @@ import {
 import {
   AppHeader,
   Button,
+  CategoryButton,
+  ChartNotice,
+  ChartTags,
   ConversationPanel,
   Dialog,
   DialogClose,
@@ -19,17 +22,20 @@ import {
   type EmergencyVoiceState,
   HelpButton,
   LanguagePicker,
+  MicTile,
   type MyRequestItem,
   MyRequestsSheet,
+  OptionTile,
   RequestCard,
   RequestPanel,
   type RequestPanelState,
   RequestSentCard,
-  RoomControls,
-  Sheet,
+  RequestSentPanel,
+  SomethingElseTile,
+  TitleRow,
 } from '@bell/ui'
 import { useEffect, useState } from 'react'
-import { callForHelp, requestAction } from '@/lib/client/api'
+import { callForHelp, requestAction, sendOption } from '@/lib/client/api'
 import {
   allSetTitle,
   CHOOSE_LANGUAGE_SUBTITLE,
@@ -44,11 +50,19 @@ import {
   statusLine,
   timeAgo,
 } from '@/lib/client/patient-text'
-import { isFirstRun, loadRoomSettings, saveRoomLanguage } from '@/lib/client/room-settings'
+import {
+  isFirstRun,
+  loadRoomSettings,
+  loadVoiceOnly,
+  saveRoomLanguage,
+  saveVoiceOnly,
+} from '@/lib/client/room-settings'
 import { useLiveFeed } from '@/lib/client/use-live-feed'
+import { CATEGORIES, type Category, type PatientOption, screenFor } from '@/lib/patient/catalog'
+import type { PatientInRoom } from '@/lib/patient/chart'
 import { useConversation } from './use-conversation'
-import { useRoomControls } from './use-room-controls'
 import { useVoiceSession } from './use-voice-session'
+import { useWakePhrase } from './use-wake-phrase'
 
 const HOME_CARDS = 2
 const FEED_LIMIT = 100
@@ -57,8 +71,6 @@ const TICK_MS = 30_000
 /** The "Request sent" card closes by itself after this long (MRSentB1 plus the timer border). */
 const SENT_CARD_SECONDS = 10
 
-type SheetName = 'room' | 'requests'
-
 type DialogState =
   /** A call that went straight to the nurse (the red overlay on the boards). */
   | { kind: 'nurse' }
@@ -66,11 +78,13 @@ type DialogState =
   | { kind: 'all-set'; language: LanguagePreference }
   | { kind: 'error'; title: string; body?: string }
 
-/** What a spoken sentence just sent, shown in the Make a request panel until confirmed. */
+/** What was just sent, shown in place until confirmed. */
 interface SentCard {
   requests: CallRequest[]
   /** Changes when a request joins, to restart the timer. */
   key: number
+  /** Sent from the mic (spoken), not from an option button. */
+  spoken: boolean
 }
 
 const newestFirst = (a: CallRequest, b: CallRequest) =>
@@ -89,18 +103,28 @@ const toItem = (request: CallRequest, now: number): MyRequestItem => ({
   nudged: request.nudgedAt !== null,
 })
 
+const TAP_HINT = 'Tap one. Nothing is sent until you do.'
+
 interface RoomScreenProps {
-  roomId: string
+  patient: PatientInRoom
   voiceEnabled: boolean
 }
 
-/** The patient tablet (1024×768, Clay): Make a request, help, My requests, language, room. */
-export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
+/**
+ * The patient tablet (1024×768, Clay), in two modes. Voice only: the big mic, the emergency
+ * button and My requests. Voice only off: emergency and mic on the left, eight category
+ * buttons, and category screens whose options follow the patient's chart.
+ */
+export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
+  const roomId = patient.roomId
   const [language, setLanguage] = useState<LanguagePreference>('auto')
+  const [voiceOnly, setVoiceOnly] = useState(true)
+  const [category, setCategory] = useState<Category | null>(null)
+  const [sendingId, setSendingId] = useState<string | null>(null)
   // The full-screen language screen: on first run, or from the header's Language button.
   const [languageScreen, setLanguageScreen] = useState(false)
   const [pickerValue, setPickerValue] = useState<LanguagePreference>('auto')
-  const [sheet, setSheet] = useState<SheetName | null>(null)
+  const [requestsOpen, setRequestsOpen] = useState(false)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [sentCard, setSentCard] = useState<SentCard | null>(null)
   const [deletingSent, setDeletingSent] = useState(false)
@@ -113,6 +137,7 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     const settings = loadRoomSettings(roomId)
     setLanguage(settings.language)
     setPickerValue(settings.language)
+    setVoiceOnly(loadVoiceOnly(roomId))
     setLanguageScreen(isFirstRun(roomId))
   }, [roomId])
 
@@ -122,7 +147,6 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
   }, [])
 
   const voice = useVoiceSession({ roomId, language, enabled: voiceEnabled })
-  const room = useRoomControls(roomId)
   const conversation = useConversation({
     mode: voice.mode,
     state: voice.state,
@@ -130,21 +154,21 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
   })
 
   // A spoken request was classified and sent. A nurse call gets the red "Your nurse has been
-  // told" overlay; anything else shows the "Request sent" card in the panel. One sentence can
-  // send several requests a moment apart: they join the card that is up and restart its timer.
+  // told" overlay; anything else shows the "Request sent" card. One sentence can send several
+  // requests a moment apart: they join the card that is up and restart its timer.
   const onEvent = (event: StreamEvent) => {
     conversation.record(event)
     const request = event.request
     if (event.type !== 'request.created' || request.source !== 'voice') return
-    setSheet(null)
+    setRequestsOpen(false)
     if (isNurseCall(request)) {
       setDialog({ kind: 'nurse' })
       return
     }
     setSentCard((card) => {
-      if (!card) return { requests: [request], key: Date.now() }
+      if (!card) return { requests: [request], key: Date.now(), spoken: true }
       if (card.requests.some((r) => r.id === request.id)) return card
-      return { requests: [...card.requests, request], key: Date.now() }
+      return { ...card, requests: [...card.requests, request], key: Date.now() }
     })
   }
   const { requests, upsertRequest } = useLiveFeed({
@@ -182,7 +206,7 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     else setDialog({ kind: 'error', title: voiceError })
   }, [voiceError, emergencyId, clearVoiceError])
 
-  const panelState: RequestPanelState = !voice.available
+  const micState: RequestPanelState = !voice.available
     ? 'unavailable'
     : voice.mode === 'request'
       ? voice.state === 'connecting'
@@ -198,15 +222,21 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
         : 'listening'
       : 'idle'
 
-  const pressPanel = () => {
+  const pressMic = () => {
     if (voice.mode === 'request') void voice.stop()
     else void voice.start({ mode: 'request' })
   }
 
+  // "Hey Bell" opens the same listening as a mic tap. It is heard on the tablet only.
+  useWakePhrase({
+    active: voice.available && !voice.mode && voice.state === 'idle' && !emergencyId,
+    onWake: () => void voice.start({ mode: 'request' }),
+  })
+
   const pressHelp = async () => {
     if (helpBusy) return
     setHelpBusy(true)
-    setSheet(null)
+    setRequestsOpen(false)
     setDialog(null)
     try {
       if (voice.mode) await voice.stop()
@@ -241,6 +271,31 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     }
   }
 
+  // The mic only starts when the patient taps it (Kurt: no listening on open).
+  const openCategory = (next: Category) => setCategory(next)
+
+  const closeCategory = () => {
+    setCategory(null)
+    if (voice.mode === 'request') void voice.stop()
+  }
+
+  // An option on a category screen: sent right away, then the "Request sent" card.
+  const pressOption = async (option: PatientOption) => {
+    if (sendingId) return
+    setSendingId(option.id)
+    if (voice.mode === 'request') void voice.stop()
+    try {
+      const request = await sendOption(roomId, option.id)
+      upsertRequest(request)
+      setCategory(null)
+      setSentCard({ requests: [request], key: Date.now(), spoken: false })
+    } catch {
+      setDialog({ kind: 'error', title: "That didn't go through", body: 'Please try again.' })
+    } finally {
+      setSendingId(null)
+    }
+  }
+
   const act = async (id: string, action: 'cancel' | 'nudge') => {
     setBusyId(id)
     try {
@@ -262,7 +317,7 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     try {
       const results = await Promise.allSettled(requestIds.map((id) => requestAction(id, 'cancel')))
       for (const result of results) if (result.status === 'fulfilled') upsertRequest(result.value)
-      void voice.notifyAgent(REQUESTS_CANCELLED_RPC, { requestIds })
+      if (sentCard.spoken) void voice.notifyAgent(REQUESTS_CANCELLED_RPC, { requestIds })
       setSentCard(null)
       if (results.some((r) => r.status === 'rejected')) {
         setDialog({ kind: 'error', title: "That didn't go through", body: 'Please try again.' })
@@ -270,6 +325,12 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     } finally {
       setDeletingSent(false)
     }
+  }
+
+  const changeVoiceOnly = (on: boolean) => {
+    setVoiceOnly(on)
+    saveVoiceOnly(roomId, on)
+    setCategory(null)
   }
 
   const openLanguageScreen = () => {
@@ -284,130 +345,166 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
     setDialog({ kind: 'all-set', language: pickerValue })
   }
 
-  const controls = room.controls
-  const roomStatus = controls ? `${controls.temperatureF}° · Lights ${controls.lights}%` : undefined
+  const sentCardView = sentCard ? (
+    <RequestSentCard
+      className="flex-1"
+      items={sentCard.requests.map((r) => ({
+        id: r.id,
+        label: patientLabel(r),
+        icon: requestIcon(r),
+      }))}
+      listening={voice.mode === 'request'}
+      seconds={SENT_CARD_SECONDS}
+      resetKey={sentCard.key}
+      onDone={() => setSentCard(null)}
+      onDelete={() => void deleteSent()}
+      deleting={deletingSent}
+    />
+  ) : null
+
+  const helpLabel = helpButtonLabel(language)
+  const greeting = patient.firstName ? `Hi, ${patient.firstName}` : `Room ${roomId}`
+  const where = patient.bed ? `Room ${roomId} · Bed ${patient.bed}` : `Room ${roomId}`
 
   return (
-    <div className="relative mx-auto flex h-dvh min-h-[768px] w-full max-w-[1024px] flex-col gap-[18px] overflow-hidden bg-bg px-7 pt-[26px] pb-7 text-ink">
+    <div className="relative mx-auto flex h-dvh min-h-[768px] w-full max-w-[1024px] flex-col gap-4 overflow-hidden bg-bg px-7 pt-6 pb-7 text-ink">
       <AppHeader
-        title={`Room ${roomId}`}
-        subtitle="Tap to request help"
+        title={greeting}
+        {...(patient.firstName ? { subtitle: where } : {})}
         languageLabel={languageName(language)}
         onLanguage={openLanguageScreen}
-        {...(roomStatus ? { roomStatus } : {})}
-        onRoom={() => {
-          setSheet('room')
-          void room.refresh()
-        }}
+        voiceOnly={voiceOnly}
+        onVoiceOnly={changeVoiceOnly}
+        {...(voiceOnly
+          ? {}
+          : { onMyRequests: () => setRequestsOpen(true), requestCount: open.length })}
       />
 
-      <main className="flex min-h-0 flex-1 gap-[18px]">
-        {sentCard ? (
-          <RequestSentCard
-            className="flex-1"
-            items={sentCard.requests.map((r) => ({
-              id: r.id,
-              label: patientLabel(r),
-              icon: requestIcon(r),
-            }))}
-            listening={voice.mode === 'request'}
-            seconds={SENT_CARD_SECONDS}
-            resetKey={sentCard.key}
-            onDone={() => setSentCard(null)}
-            onDelete={() => void deleteSent()}
-            deleting={deletingSent}
-          />
-        ) : conversation.shown ? (
-          <ConversationPanel
-            className="flex-1"
-            items={conversation.items}
-            status={conversation.status}
-            onPress={pressPanel}
-          />
-        ) : (
-          <RequestPanel className="flex-1" state={panelState} onPress={pressPanel} />
-        )}
-
-        <div className="flex w-column shrink-0 flex-col gap-4">
-          <HelpButton
-            className="min-h-0 flex-1"
-            label={helpButtonLabel(language)}
-            onPress={() => void pressHelp()}
-            busy={helpBusy}
-          />
-
-          <section
-            aria-labelledby="my-requests-title"
-            className="flex min-h-0 flex-1 flex-col gap-2"
-          >
-            <div className="flex items-center justify-between px-1.5">
-              <h2
-                id="my-requests-title"
-                className="font-body text-body font-bold tracking-[0.06em] text-muted uppercase"
-              >
-                My requests
-              </h2>
-              <Button
-                variant="ghost"
-                size="md"
-                onClick={() => setSheet('requests')}
-                className="px-1 text-action-ink underline underline-offset-4"
-              >
-                {open.length > 0 ? 'See all' : 'See past'}
-              </Button>
-            </div>
-            {homeCards.length > 0 ? (
-              <ul className="flex min-h-0 flex-1 flex-col gap-3">
-                {homeCards.map((request) => (
-                  <li key={request.id} className="flex min-h-0 flex-1">
-                    <RequestCard
-                      className="h-full max-h-[140px]"
-                      label={patientLabel(request)}
-                      icon={requestIcon(request)}
-                      status={request.status}
-                      onPress={() => setSheet('requests')}
-                    />
-                  </li>
-                ))}
-              </ul>
+      {voiceOnly ? (
+        <main className="flex min-h-0 flex-1 gap-[18px]">
+          {sentCardView ??
+            (conversation.shown ? (
+              <ConversationPanel
+                className="flex-1"
+                items={conversation.items}
+                status={conversation.status}
+                onPress={pressMic}
+              />
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col justify-center gap-2 rounded-md border-2 border-dashed border-border px-6">
-                <p className="font-heading text-heading leading-tight text-muted">
-                  Nothing right now
-                </p>
-                <p className="text-body text-muted">Your requests will show here.</p>
-              </div>
-            )}
-          </section>
-        </div>
-      </main>
+              <RequestPanel className="flex-1" state={micState} onPress={pressMic} />
+            ))}
 
-      <Sheet
-        open={sheet === 'room'}
-        onOpenChange={(isOpen) => setSheet(isOpen ? 'room' : null)}
-        title="Your room"
-      >
-        {controls ? (
-          <RoomControls
-            lights={controls.lights}
-            temperatureF={controls.temperatureF}
-            blinds={controls.blinds}
-            tvOn={controls.tv.power}
-            onLights={(lights) => void room.update({ lights })}
-            onTemperature={(temperatureF) => void room.update({ temperatureF })}
-            onBlinds={(blinds) => void room.update({ blinds })}
-            onTv={(power) => void room.update({ tv: { power } })}
-          />
-        ) : (
-          <p className="text-lead text-muted">
-            {room.failed ? "Room controls aren't available right now." : 'Loading…'}
-          </p>
-        )}
-      </Sheet>
+          <div className="flex w-column shrink-0 flex-col gap-4">
+            <HelpButton
+              className="min-h-0 flex-1"
+              label={helpLabel}
+              onPress={() => void pressHelp()}
+              busy={helpBusy}
+            />
+
+            <section
+              aria-labelledby="my-requests-title"
+              className="flex min-h-0 flex-1 flex-col gap-2"
+            >
+              <div className="flex items-center justify-between px-1.5">
+                <h2
+                  id="my-requests-title"
+                  className="font-body text-body font-bold tracking-[0.06em] text-muted uppercase"
+                >
+                  My requests
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={() => setRequestsOpen(true)}
+                  className="px-1 text-action-ink underline underline-offset-4"
+                >
+                  {open.length > 0 ? 'See all' : 'See past'}
+                </Button>
+              </div>
+              {homeCards.length > 0 ? (
+                <ul className="flex min-h-0 flex-1 flex-col gap-3">
+                  {homeCards.map((request) => (
+                    <li key={request.id} className="flex min-h-0 flex-1">
+                      <RequestCard
+                        className="h-full max-h-[140px]"
+                        label={patientLabel(request)}
+                        icon={requestIcon(request)}
+                        status={request.status}
+                        onPress={() => setRequestsOpen(true)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col justify-center gap-2 rounded-md border-2 border-dashed border-border px-6">
+                  <p className="font-heading text-heading leading-tight text-muted">
+                    Nothing right now
+                  </p>
+                  <p className="text-body text-muted">Your requests will show here.</p>
+                </div>
+              )}
+            </section>
+          </div>
+        </main>
+      ) : (
+        <div className="flex min-h-0 flex-1 gap-[18px]">
+          <div className="flex w-[280px] shrink-0 flex-col gap-3.5">
+            <HelpButton
+              size="short"
+              label={helpLabel}
+              onPress={() => void pressHelp()}
+              busy={helpBusy}
+            />
+            <MicTile
+              className="flex-1"
+              state={micState}
+              onPress={pressMic}
+              {...(category ? { listeningHint: 'Tap an option or speak your request' } : {})}
+            />
+          </div>
+
+          <main className="flex min-w-0 flex-1 flex-col gap-3.5">
+            {sentCard ? (
+              <RequestSentPanel
+                label={sentCard.requests.map(patientLabel).join(', ')}
+                onOkay={() => setSentCard(null)}
+                onCancel={() => void deleteSent()}
+                cancelling={deletingSent}
+              />
+            ) : category ? (
+                <CategoryView
+                  category={category}
+                  patient={patient}
+                  listening={micState === 'listening'}
+                  sendingId={sendingId}
+                  onBack={closeCategory}
+                  onOption={(option) => void pressOption(option)}
+                  onSomethingElse={pressMic}
+                />
+              ) : (
+                <>
+                  <TitleRow title="What's it about?" />
+                  <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-4 gap-3">
+                    {CATEGORIES.map((c) => (
+                      <CategoryButton
+                        key={c.id}
+                        label={c.label}
+                        examples={c.examples}
+                        icon={c.icon}
+                        onPress={() => openCategory(c)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+          </main>
+        </div>
+      )}
 
       <MyRequestsSheet
-        open={sheet === 'requests'}
-        onOpenChange={(isOpen) => setSheet(isOpen ? 'requests' : null)}
+        open={requestsOpen}
+        onOpenChange={setRequestsOpen}
         openItems={open.map((r) => toItem(r, now))}
         earlierItems={earlier.map((r) => toItem(r, now))}
         onNudge={(id) => void act(id, 'nudge')}
@@ -499,5 +596,58 @@ export function RoomScreen({ roomId, voiceEnabled }: RoomScreenProps) {
         />
       ) : null}
     </div>
+  )
+}
+
+/** One category: back and title, the chart note or tags, the options, then Something else. */
+function CategoryView({
+  category,
+  patient,
+  listening,
+  sendingId,
+  onBack,
+  onOption,
+  onSomethingElse,
+}: {
+  category: Category
+  patient: PatientInRoom
+  listening: boolean
+  sendingId: string | null
+  onBack: () => void
+  onOption: (option: PatientOption) => void
+  onSomethingElse: () => void
+}) {
+  const screen = screenFor(category, patient.chart)
+  // Few options: fixed-height rows from the top, not stretched over the screen.
+  const few = screen.options.length < 4
+  return (
+    <>
+      <TitleRow title={category.label} onBack={onBack} />
+      {screen.notice ? (
+        <ChartNotice className="-mt-1" title={screen.notice.title} body={screen.notice.body} />
+      ) : screen.tags ? (
+        <ChartTags className="-mt-1" tags={screen.tags} />
+      ) : listening ? null : (
+        <p className="-mt-1 text-[19px] text-muted">{TAP_HINT}</p>
+      )}
+      <div
+        className={
+          few
+            ? 'grid auto-rows-[112px] grid-cols-2 content-start gap-2.5'
+            : 'grid min-h-0 flex-1 grid-cols-2 grid-rows-4 gap-2.5'
+        }
+      >
+        {screen.options.map((option) => (
+          <OptionTile
+            key={option.id}
+            label={option.label}
+            sub={option.sub}
+            disabled={sendingId !== null}
+            onPress={() => onOption(option)}
+          />
+        ))}
+        <SomethingElseTile onPress={onSomethingElse} />
+      </div>
+    </>
   )
 }

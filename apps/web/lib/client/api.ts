@@ -1,6 +1,6 @@
-import type { RoomControlsState } from '@bell/core/adapters'
 import type {
   CallRequest,
+  OptionId,
   RequestAction,
   RequestStatus,
   VoiceTokenInput,
@@ -37,12 +37,22 @@ const send = <T>(url: string, method: 'POST' | 'PATCH', body: unknown) =>
 export const listRequests = async (params: URLSearchParams): Promise<CallRequest[]> =>
   (await request<{ requests: CallRequest[] }>(`/api/requests?${params}`)).requests
 
-/** "I need help immediately": an urgent nurse call. */
+/** "I have an emergency": an urgent nurse call. */
 export const callForHelp = async (roomId: string): Promise<CallRequest> =>
   (
     await send<{ request: CallRequest }>('/api/requests', 'POST', {
       roomId,
       source: 'nurse_button',
+    })
+  ).request
+
+/** A category option on the tablet: a fixed destination, no AI. */
+export const sendOption = async (roomId: string, optionId: OptionId): Promise<CallRequest> =>
+  (
+    await send<{ request: CallRequest }>('/api/requests', 'POST', {
+      roomId,
+      source: 'tile',
+      optionId,
     })
   ).request
 
@@ -69,19 +79,3 @@ export interface VoiceToken {
 
 export const fetchVoiceToken = (input: VoiceTokenInput): Promise<VoiceToken> =>
   send('/api/livekit/token', 'POST', input)
-
-const controlsUrl = (roomId: string) => `/api/rooms/${encodeURIComponent(roomId)}/controls`
-
-export const getRoomControls = (roomId: string): Promise<RoomControlsState> =>
-  request(controlsUrl(roomId))
-
-export type RoomControlsPatch = Partial<
-  Pick<RoomControlsState, 'lights' | 'temperatureF' | 'blinds'> & {
-    tv: Partial<RoomControlsState['tv']>
-  }
->
-
-export const updateRoomControls = (
-  roomId: string,
-  patch: RoomControlsPatch,
-): Promise<RoomControlsState> => send(controlsUrl(roomId), 'PATCH', patch)

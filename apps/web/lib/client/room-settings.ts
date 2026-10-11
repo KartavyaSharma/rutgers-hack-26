@@ -10,6 +10,7 @@ import {
 
 const settingsKey = (roomId: string) => `bell-room-settings:${roomId}`
 const chosenKey = (roomId: string) => `bell-language-chosen:${roomId}`
+const voiceOnlyKey = (roomId: string) => `bell-voice-only:${roomId}`
 
 const safely = <T>(read: () => T, fallback: T): T => {
   try {
@@ -44,3 +45,10 @@ export const saveRoomLanguage = (roomId: string, language: LanguagePreference): 
 /** True until the patient has picked a language on this tablet for this room. */
 export const isFirstRun = (roomId: string): boolean =>
   safely(() => localStorage.getItem(chosenKey(roomId)) === null, false)
+
+/** Voice only mode (the big mic home). On by default for now; off shows the category buttons. */
+export const loadVoiceOnly = (roomId: string): boolean =>
+  safely(() => localStorage.getItem(voiceOnlyKey(roomId)) !== '0', true)
+
+export const saveVoiceOnly = (roomId: string, on: boolean): void =>
+  safely(() => localStorage.setItem(voiceOnlyKey(roomId), on ? '1' : '0'), undefined)

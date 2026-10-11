@@ -32,13 +32,6 @@ const ICONS = {
       <path d="M12 2v2.5M4.5 5.5l1.6 1.6M19.5 5.5l-1.6 1.6" />
     </>
   ),
-  sliders: (
-    <>
-      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
-      <circle cx="16" cy="7" r="2" />
-      <circle cx="10" cy="17" r="2" />
-    </>
-  ),
   close: <path d="M6 6l12 12M18 6L6 18" />,
   search: (
     <>
@@ -81,6 +74,43 @@ const ICONS = {
       <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h.01" />
     </>
   ),
+  /** A house, for "Room problem". */
+  room: (
+    <>
+      <path d="M3 11l9-7 9 7" />
+      <path d="M5 10v10h14V10" />
+      <path d="M10 20v-5h4v5" />
+    </>
+  ),
+  /** A speech bubble, for "Talk to someone". */
+  talk: <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4A8 8 0 1 1 20 12z" />,
+  /** For "Something else" (typing later; for now it opens the mic). */
+  keyboard: (
+    <>
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M6 14h.01M18 14h.01M9 14h6" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6M12 7.5h.01" />
+    </>
+  ),
+  list: (
+    <>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <circle cx="4.5" cy="6" r="1" />
+      <circle cx="4.5" cy="12" r="1" />
+      <circle cx="4.5" cy="18" r="1" />
+    </>
+  ),
   nurse: (
     <>
       <circle cx="10" cy="8" r="3.5" />
@@ -119,23 +149,23 @@ export function Icon({ name, className, strokeWidth = 2, ...props }: IconProps) 
 
 /** Request group ids (same strings as GroupId in @bell/core/taxonomy). */
 export type GroupIconKey =
-  | 'water_food'
+  | 'unwell'
   | 'bathroom'
+  | 'move'
+  | 'food'
   | 'comfort'
-  | 'reposition'
-  | 'beeping'
-  | 'cleaning'
-  | 'fix_something'
-  | 'ask_care_team'
+  | 'room'
+  | 'questions'
+  | 'talk'
 
-/** The icon for each request group, used for request cards and labels. */
+/** The icon for each request group: the category buttons, request cards and labels. */
 export const GROUP_ICON: Record<GroupIconKey, IconName> = {
-  water_food: 'water',
+  unwell: 'beeping',
   bathroom: 'bathroom',
+  move: 'move',
+  food: 'water',
   comfort: 'comfort',
-  reposition: 'move',
-  beeping: 'beeping',
-  cleaning: 'cleaning',
-  fix_something: 'fix',
-  ask_care_team: 'question',
+  room: 'room',
+  questions: 'question',
+  talk: 'talk',
 }

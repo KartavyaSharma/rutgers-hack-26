@@ -1,12 +1,12 @@
 import {
   type CallRequest,
+  findOption,
   groupOfCategory,
   IMMEDIATE_BY_REASON,
   isRtlLanguage,
   LANGUAGES,
   type LanguagePreference,
   MOST_USED_LANGUAGES,
-  optionById,
   type RequestStatus,
 } from '@bell/core/taxonomy'
 import { GROUP_ICON, type IconName, type LanguageOption } from '@bell/ui'
@@ -31,7 +31,7 @@ const withoutFinalPeriod = (text: string) => text.replace(/[.。]\s*$/u, '')
  */
 export const patientLabel = (request: CallRequest): string => {
   if (request.source === 'nurse_button') return 'Help'
-  if (request.optionId) return optionById(request.optionId).label
+  if (request.optionId) return findOption(request.optionId)?.label ?? request.staffSummary
   const words = request.text?.trim()
   const readBack = request.patientReply?.trim()
   if (isNurseCall(request) && words) return `“${words}”`
@@ -42,7 +42,7 @@ export const patientLabel = (request: CallRequest): string => {
 export const requestIcon = (request: CallRequest): IconName => {
   if (request.source === 'nurse_button') return 'alert'
   const group = request.optionId
-    ? optionById(request.optionId).groupId
+    ? (findOption(request.optionId)?.groupId ?? null)
     : groupOfCategory(request.category)
   return group ? GROUP_ICON[group] : 'mic'
 }
