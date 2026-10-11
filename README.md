@@ -6,23 +6,26 @@ Spoken requests are classified by Jev (TypeSafe AI) and sent to
 the care aide, housekeeping, facilities, food services or IT, and **anything clinical or unclear always goes to the
 nurse**. The voice agent holds a normal conversation (Qwen 3.8 on Cerebras) and uses tools to file requests.
 
-## Run it
+## Run it locally
 
-Requirements: Node 22.18+ and pnpm (via corepack: `corepack enable pnpm`).
+Requirements: Node 22.18+ (`.nvmrc`) and pnpm (`corepack enable pnpm`).
 
 ```sh
 pnpm install
-cp .env.example .env   # optional: everything works without keys
-pnpm dev               # web on http://localhost:3000 (+ voice agent when keys exist)
+cp .env.example .env   # optional: everything below works without keys
+pnpm dev               # web app on http://localhost:3217 (+ voice agent when its keys are set)
+pnpm dev:staff         # optional, second terminal: staff app on http://localhost:3218
 ```
-
-Port 3000 busy? `PORT=3217 pnpm dev` (and set `APP_URL` to match if you run the voice agent).
 
 Open:
 
-- http://localhost:3000/room/412: patient tablet (1024x768 landscape)
-- http://localhost:3000/staff/care_aide: dev view of a team's requests (`nurse`, `care_aide`, `housekeeping`, `facilities`, `food`, `it`). Not the hospital design.
-- http://localhost:3000/design: tokens and components in the Clay and Night themes
+- http://localhost:3217/room/412: patient tablet (1024x768 landscape)
+- http://localhost:3218: staff app (sign in with `priya@bell.demo` / `bell`; needs `pnpm dev` running)
+- http://localhost:3217/staff/care_aide: bare dev view of a team's requests (`nurse`, `care_aide`, `housekeeping`, `facilities`, `food`, `it`)
+- http://localhost:3217/design: tokens and components in the Clay and Night themes
+
+For voice, fill in the LiveKit, ElevenLabs, AI Gateway and TypeSafe keys in `.env` (see [Environment](#environment)).
+To change ports: `PORT=… pnpm dev` (and match `APP_URL`), `STAFF_PORT=… BELL_API_URL=http://localhost:<PORT> pnpm dev:staff`.
 
 Without any keys: **I need help immediately**, My requests, Your room, the language screens and the staff dev view
 work end to end, and Make a request (voice) is disabled. Without `DATABASE_URL`, data is stored with PGlite in
@@ -31,6 +34,7 @@ work end to end, and Make a request (voice) is disabled. Without `DATABASE_URL`,
 | Script | What it does |
 | --- | --- |
 | `pnpm dev` | web + voice agent together (the agent exits quietly if its keys are missing) |
+| `pnpm dev:staff` | staff app (`apps/staff`) on port 3218, proxying the web API |
 | `pnpm build` | builds the web app; typechecks the packages |
 | `pnpm typecheck` | `tsc` in every workspace |
 | `pnpm lint` | Biome |
@@ -52,7 +56,7 @@ All variables live in one `.env` at the repo root (see `.env.example`). Never co
 | `LLM_PROVIDER` | agent | `gateway` (default with the gateway key): Qwen 3.8 27B through the AI Gateway, Cerebras raced against wafer/deepinfra; or `cerebras` (direct) |
 | `CEREBRAS_API_KEY` | agent (web: backup router) | direct conversation LLM `qwen-3.8-27b` with `reasoning_effort: "low"` (`CEREBRAS_AGENT_MODEL`, `CEREBRAS_AGENT_REASONING_EFFORT`); also the backup Qwen JSON router (`routeText`) |
 | `DATABASE_URL` | web | Postgres; unset means PGlite in `apps/web/.data/` |
-| `APP_URL` | agent | where the agent calls the web API, e.g. `http://localhost:3000` |
+| `APP_URL` | agent | where the agent calls the web API, locally `http://localhost:3217` |
 | `AGENT_SHARED_SECRET` | web, agent | bearer token the agent uses for routed requests and notes |
 
 ## How it works
