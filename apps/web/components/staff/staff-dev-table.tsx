@@ -3,7 +3,7 @@
 import {
   type CallRequest,
   NURSE_BUTTON,
-  optionById,
+  findOption,
   REQUEST_STATUS_LABELS,
   REQUEST_STATUSES,
   type RequestStatus,
@@ -27,7 +27,7 @@ const isStatus = (value: string): value is RequestStatus =>
 
 /** What the patient asked for: the option they tapped, the nurse button, or their own words. */
 const requestLabel = (r: CallRequest): string => {
-  if (r.optionId) return `${optionById(r.optionId).label} (${r.optionId})`
+  if (r.optionId) return `${findOption(r.optionId)?.label ?? r.staffSummary} (${r.optionId})`
   if (r.source === 'nurse_button') return NURSE_BUTTON.label
   return r.text ? `“${r.text}” (${r.source})` : r.source
 }

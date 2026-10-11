@@ -29,8 +29,8 @@ export const URGENCY_LABELS: Record<Urgency, string> = {
 export interface RoutingDecision {
   team: Team
   /**
-   * Machine-friendly label. From Jev it is a request GroupId (water_food, bathroom, comfort,
-   * reposition, beeping, cleaning, fix_something, ask_care_team) so the tablet can pick an icon;
+   * Machine-friendly label. From Jev it is a request GroupId (unwell, bathroom, move, food,
+   * comfort, room, questions, talk) so the tablet can pick an icon;
    * other sources may use free labels (e.g. "nurse_call").
    */
   category: string
@@ -338,7 +338,7 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = { language: 'auto', theme: 'c
 /**
  * Job metadata the web token endpoint attaches to the agent dispatch (JSON).
  * mode 'request': the normal "Make a request" conversation.
- * mode 'emergency': opened from the emergency screen after "I need help immediately". The agent says
+ * mode 'emergency': opened from the emergency screen after "I have an emergency". The agent says
  * patientMessage("emergency_listening") and appends what the patient says to the
  * emergency request (PATCH add_note) instead of making new requests.
  */
@@ -364,17 +364,18 @@ export interface VoiceTokenInput {
 //   PATCH /api/rooms/[roomId]/controls { lights?, temperatureF?, blinds?, tv? } -> RoomControlsState
 
 // ---------------------------------------------------------------------------
-// Home screen: up to 8 groups, each with up to 7 plain-word request options.
-// Options never call the AI: each one has a fixed destination team.
-// The screen can render groups (tap a group, then an option) or flat tiles (a group with a
-// single option sends it directly). PLACEHOLDER content built from the original 8 tiles; the
-// final list comes from the layout doc.
+// Home screen: 8 groups, each with up to 7 plain-word request options (from the Bell Patient
+// Tablet artboard). Options never call the AI: each one has a fixed destination team.
+// The tablet hides some options by chart rules (apps/web/lib/patient); CHART_OPTIONS are the
+// ones it shows in their place, e.g. while the patient may have nothing by mouth.
 // ---------------------------------------------------------------------------
 
 export interface RequestOption {
-  /** Globally unique across groups. */
+  /** Globally unique across groups, "<group>.<option>". */
   id: string
   label: string
+  /** Short second line on the tablet, e.g. "A cup or a pitcher". */
+  sub: string
   team: Team
   category: string
   urgency: Urgency
@@ -384,7 +385,7 @@ export interface RequestOption {
 export interface RequestGroup {
   id: string
   label: string
-  /** Secondary line under the label, if any. */
+  /** Examples under the label, e.g. "Water, ice, meals". */
   hint: string | null
   /** 1..7 options. */
   requests: readonly RequestOption[]
@@ -396,195 +397,156 @@ export const MAX_OPTIONS_PER_GROUP = 7
 const option = (
   id: string,
   label: string,
+  sub: string,
   team: Team,
   category: string,
   urgency: Urgency,
   staffSummary: string,
-) => ({ id, label, team, category, urgency, staffSummary }) as const satisfies RequestOption
+) => ({ id, label, sub, team, category, urgency, staffSummary }) as const satisfies RequestOption
 
 export const REQUEST_GROUPS = [
   {
-    id: 'water_food',
-    label: 'Water & food',
-    hint: null,
+    id: 'unwell',
+    label: "I don't feel well",
+    hint: 'Pain, sick, dizzy, IV',
     requests: [
-      option('water', 'Water', 'care_aide', 'water', 'soon', 'Patient would like water'),
-      option(
-        'ice_chips',
-        'Ice chips',
-        'care_aide',
-        'water',
-        'soon',
-        'Patient would like ice chips',
-      ),
-      option(
-        'snack',
-        'Something to eat',
-        'care_aide',
-        'food',
-        'soon',
-        'Patient would like something to eat',
-      ),
+      option('unwell.pain', "I'm in pain", 'Tell us how bad', 'nurse', 'pain', 'soon', 'Patient is in pain'),
+      option('unwell.nausea', 'Sick to my stomach', 'Nausea or throwing up', 'nurse', 'nausea', 'soon', 'Patient feels nauseous'),
+      option('unwell.dizzy', 'Dizzy or weak', 'Faint or shaky', 'nurse', 'dizzy', 'soon', 'Patient feels dizzy or weak'),
+      option('unwell.sleep', "Can't sleep", 'Too awake or sore', 'nurse', 'sleep', 'routine', "Patient can't sleep"),
+      option('unwell.itchy', 'Itchy or rash', 'Skin bothering you', 'nurse', 'skin', 'routine', 'Patient is itchy or has a rash'),
+      option('unwell.beeping', 'IV or machine beeping', 'An alarm is going off', 'nurse', 'device_alarm', 'soon', 'An IV or device is alarming'),
+      option('unwell.iv_site', 'IV site hurts', 'Sore, swollen or wet', 'nurse', 'iv_site', 'soon', 'IV site is sore, swollen or wet'),
     ],
   },
   {
     id: 'bathroom',
-    label: 'Bathroom help',
-    hint: null,
+    label: 'Bathroom',
+    hint: 'Toilet, bedpan, washing up',
     requests: [
-      option(
-        'bathroom_help',
-        'Help to the bathroom',
-        'care_aide',
-        'bathroom',
-        'soon',
-        'Patient needs help getting to the bathroom',
-      ),
-      option(
-        'bedpan',
-        'Bedpan or urinal',
-        'care_aide',
-        'bathroom',
-        'soon',
-        'Patient needs a bedpan or urinal',
-      ),
+      option('bathroom.toilet', 'Help to the toilet', 'Someone walks you there', 'care_aide', 'bathroom', 'soon', 'Patient needs help to the toilet'),
+      option('bathroom.bedpan', 'Bedpan', 'Use it in bed', 'care_aide', 'bathroom', 'soon', 'Patient needs a bedpan'),
+      option('bathroom.urinal', 'Urinal', 'Use it in bed', 'care_aide', 'bathroom', 'soon', 'Patient needs a urinal'),
+      option('bathroom.accident', 'I had an accident', 'We will help you clean up', 'care_aide', 'incontinence', 'soon', 'Patient had an accident and needs cleanup'),
+      option('bathroom.wash', 'Help me wash up', 'Wipes, basin or shower', 'care_aide', 'hygiene', 'routine', 'Patient wants help washing up'),
+      option('bathroom.teeth', 'Brush my teeth', 'Toothbrush and a cup', 'care_aide', 'hygiene', 'routine', 'Patient wants to brush their teeth'),
+      option('bathroom.gown', 'Change my gown', 'A clean one', 'care_aide', 'hygiene', 'routine', 'Patient wants a clean gown'),
+    ],
+  },
+  {
+    id: 'move',
+    label: 'Move or reach',
+    hint: 'Sit up, turn, get up, reach',
+    requests: [
+      option('move.turn', 'Turn or reposition', 'Shift in bed', 'care_aide', 'reposition', 'soon', 'Patient needs help repositioning'),
+      option('move.sit_up', 'Sit up higher', 'Move up in bed', 'care_aide', 'reposition', 'soon', 'Patient needs help sitting up'),
+      option('move.get_up', 'Get out of bed', 'Help to stand', 'care_aide', 'mobility', 'soon', 'Patient wants to get out of bed'),
+      option('move.walk', 'Help me walk', 'Someone walks with you', 'care_aide', 'mobility', 'routine', 'Patient wants help walking'),
+      option('move.chair', 'Get into a chair', 'Bed to chair', 'care_aide', 'mobility', 'routine', 'Patient wants to move to a chair'),
+      option('move.reach', 'Reach something', 'Phone, glasses, cup', 'care_aide', 'reach', 'routine', 'Patient needs something within reach'),
+      option('move.bed_stuck', "Bed won't move", 'Buttons not working', 'facilities', 'repair_bed', 'routine', 'Bed controls not working'),
+    ],
+  },
+  {
+    id: 'food',
+    label: 'Food and drink',
+    hint: 'Water, ice, meals',
+    requests: [
+      option('food.water', 'Water', 'A cup or a pitcher', 'care_aide', 'water', 'soon', 'Patient would like water'),
+      option('food.ice', 'Ice', 'Ice chips or a cup of ice', 'care_aide', 'water', 'soon', 'Patient would like ice'),
+      option('food.snack', 'Snack', 'Crackers, juice, fruit', 'care_aide', 'food', 'routine', 'Patient would like a snack'),
+      option('food.meal', 'Order a meal', 'From today’s menu', 'food', 'meal', 'routine', 'Patient wants to order a meal'),
+      option('food.tray_late', 'My tray is late', 'We’ll check on it', 'food', 'meal', 'soon', "Patient's meal tray is late"),
+      option('food.wrong', 'Wrong food', 'Not what I ordered', 'food', 'meal', 'routine', 'Patient got the wrong food'),
+      option('food.diet_question', 'Diet question', 'What am I allowed to eat?', 'nurse', 'diet', 'routine', 'Patient has a question about their diet'),
     ],
   },
   {
     id: 'comfort',
     label: 'Comfort items',
-    hint: 'Blanket, pillow, socks',
+    hint: 'Blanket, pillow, charger',
     requests: [
-      option(
-        'blanket',
-        'Blanket',
-        'care_aide',
-        'comfort_items',
-        'routine',
-        'Patient would like a blanket',
-      ),
-      option(
-        'pillow',
-        'Pillow',
-        'care_aide',
-        'comfort_items',
-        'routine',
-        'Patient would like a pillow',
-      ),
-      option('socks', 'Socks', 'care_aide', 'comfort_items', 'routine', 'Patient would like socks'),
+      option('comfort.blanket', 'Blanket', 'A warm one', 'care_aide', 'comfort_items', 'routine', 'Patient would like a blanket'),
+      option('comfort.pillow', 'Pillow', 'One more', 'care_aide', 'comfort_items', 'routine', 'Patient would like a pillow'),
+      option('comfort.socks', 'Socks', 'Non-slip', 'care_aide', 'comfort_items', 'routine', 'Patient would like non-slip socks'),
+      option('comfort.toiletries', 'Toiletries', 'Toothpaste, lotion, comb', 'care_aide', 'comfort_items', 'routine', 'Patient would like toiletries'),
+      option('comfort.charger', 'Phone charger', 'Borrow one', 'care_aide', 'comfort_items', 'routine', 'Patient would like a phone charger'),
+      option('comfort.sleep_kit', 'Earplugs or eye mask', 'To help you sleep', 'care_aide', 'comfort_items', 'routine', 'Patient would like earplugs or an eye mask'),
+      option('comfort.tissues', 'Tissues', 'A box', 'care_aide', 'comfort_items', 'routine', 'Patient would like tissues'),
     ],
   },
   {
-    id: 'reposition',
-    label: 'Move or sit up',
-    hint: null,
+    id: 'room',
+    label: 'Room problem',
+    hint: 'Too hot, TV, Wi-Fi, cleaning',
     requests: [
-      option(
-        'sit_up',
-        'Sit up',
-        'care_aide',
-        'reposition',
-        'soon',
-        'Patient needs help sitting up',
-      ),
-      option(
-        'move_in_bed',
-        'Move in bed',
-        'care_aide',
-        'reposition',
-        'soon',
-        'Patient needs help moving in bed',
-      ),
+      option('room.too_hot', 'Too hot', 'Cool the room down', 'facilities', 'temperature', 'routine', 'Room is too hot'),
+      option('room.too_cold', 'Too cold', 'Warm the room up', 'facilities', 'temperature', 'routine', 'Room is too cold'),
+      option('room.tv', 'TV or remote', 'Not working', 'facilities', 'repair_tv', 'routine', 'TV or remote not working'),
+      option('room.lights', 'Lights', 'Not working', 'facilities', 'repair_lights', 'routine', 'Lights not working'),
+      option('room.phone', 'Phone', 'Room phone', 'it', 'repair_phone', 'routine', 'Room phone not working'),
+      option('room.wifi', 'Wi-Fi', 'Can’t connect', 'it', 'repair_wifi', 'routine', "Patient can't connect to Wi-Fi"),
+      option('room.cleaning', 'Room needs cleaning', 'Spill, trash, bathroom', 'housekeeping', 'cleaning', 'routine', 'Room needs cleaning'),
     ],
   },
   {
-    id: 'beeping',
-    label: 'Something is beeping',
-    hint: null,
+    id: 'questions',
+    label: 'Questions',
+    hint: 'My care, going home, bills',
     requests: [
-      option(
-        'beeping',
-        'Something is beeping',
-        'nurse',
-        'device_alarm',
-        'soon',
-        'A device in the room is beeping',
-      ),
+      option('questions.care_today', 'About my care today', 'The plan for today', 'nurse', 'question', 'routine', 'Patient asks about the plan for today'),
+      option('questions.doctor', 'Doctor visit', 'When they’re coming', 'nurse', 'question', 'routine', 'Patient asks when the doctor is coming'),
+      option('questions.results', 'Test results', 'Have they come back?', 'nurse', 'question', 'routine', 'Patient asks about test results'),
+      option('questions.going_home', 'When can I go home?', 'Your discharge plan', 'nurse', 'discharge', 'routine', 'Patient asks about going home'),
+      option('questions.home_meds', 'Medicines for home', 'What to take after', 'nurse', 'discharge', 'routine', 'Patient asks about medicines for home'),
+      option('questions.bills', 'Bills or insurance', 'Costs and coverage', 'nurse', 'billing', 'routine', 'Patient has a billing or insurance question'),
+      option('questions.forms', 'Forms and records', 'Copies and paperwork', 'nurse', 'records', 'routine', 'Patient asks about forms or records'),
     ],
   },
   {
-    id: 'cleaning',
-    label: 'Cleaning',
-    hint: null,
+    id: 'talk',
+    label: 'Talk to someone',
+    hint: 'Chaplain, interpreter, a concern',
     requests: [
-      option(
-        'clean_room',
-        'Clean my room',
-        'housekeeping',
-        'cleaning',
-        'routine',
-        'Room needs cleaning',
-      ),
-      option(
-        'clean_bathroom',
-        'Clean the bathroom',
-        'housekeeping',
-        'cleaning',
-        'routine',
-        'Bathroom needs cleaning',
-      ),
-      option(
-        'empty_trash',
-        'Empty the trash',
-        'housekeeping',
-        'cleaning',
-        'routine',
-        'Trash needs emptying',
-      ),
-    ],
-  },
-  {
-    id: 'fix_something',
-    label: 'Fix something',
-    hint: 'TV, lights, Wi-Fi',
-    requests: [
-      option('fix_tv', 'TV', 'facilities', 'repair_tv', 'routine', 'TV needs fixing'),
-      option(
-        'fix_lights',
-        'Lights',
-        'facilities',
-        'repair_lights',
-        'routine',
-        'Lights need fixing',
-      ),
-      option('fix_wifi', 'Wi-Fi', 'facilities', 'repair_wifi', 'routine', 'Wi-Fi is not working'),
-    ],
-  },
-  {
-    id: 'ask_care_team',
-    label: 'Ask my care team',
-    hint: null,
-    requests: [
-      option(
-        'ask_care_team',
-        'Ask my care team',
-        'nurse',
-        'question',
-        'routine',
-        'Patient has a question for the care team',
-      ),
+      option('talk.chaplain', 'Chaplain', 'Spiritual support', 'nurse', 'chaplain', 'routine', 'Patient would like to see a chaplain'),
+      option('talk.social_worker', 'Social worker', 'Help at home, money, rides', 'nurse', 'social_work', 'routine', 'Patient would like to see a social worker'),
+      option('talk.interpreter', 'Interpreter', 'In your language', 'nurse', 'interpreter', 'soon', 'Patient needs an interpreter'),
+      option('talk.anxious', 'I feel anxious', 'Worried or scared', 'nurse', 'anxiety', 'soon', 'Patient feels anxious'),
+      option('talk.family', 'My family needs help', 'Support for them', 'nurse', 'family', 'routine', "Patient's family needs support"),
+      option('talk.concern', 'I have a concern', 'Something isn’t right', 'nurse', 'concern', 'soon', 'Patient has a concern'),
+      option('talk.lost', 'Lost belongings', 'Can’t find something', 'care_aide', 'lost_item', 'routine', 'Patient lost a belonging'),
     ],
   },
 ] as const satisfies readonly RequestGroup[]
 
-export type GroupId = (typeof REQUEST_GROUPS)[number]['id']
-export type OptionId = (typeof REQUEST_GROUPS)[number]['requests'][number]['id']
+/** Options the tablet shows in place of hidden ones, by chart rule. Not on any default screen. */
+export const CHART_OPTIONS = [
+  {
+    ...option('food.thirsty', "I'm really thirsty", 'Your nurse can bring lip balm or a mouth swab', 'nurse', 'npo_thirst', 'soon', 'Patient is NPO and very thirsty'),
+    groupId: 'food',
+  },
+  {
+    ...option('food.ice_pack', 'Ice pack', 'For your body, not to eat', 'care_aide', 'comfort_items', 'routine', 'Patient would like an ice pack (not to eat)'),
+    groupId: 'food',
+  },
+  {
+    ...option('food.meal_after', 'Meal for after my scan', 'Ready when you can eat', 'food', 'meal', 'routine', 'Patient wants a meal held for after their procedure'),
+    groupId: 'food',
+  },
+] as const
 
-/** Every option across all groups, in screen order. */
-export const REQUEST_OPTIONS: readonly (RequestOption & { id: OptionId; groupId: GroupId })[] =
-  REQUEST_GROUPS.flatMap((group) =>
+export type GroupId = (typeof REQUEST_GROUPS)[number]['id']
+export type OptionId =
+  | (typeof REQUEST_GROUPS)[number]['requests'][number]['id']
+  | (typeof CHART_OPTIONS)[number]['id']
+
+/** Every option across all groups, in screen order, then the chart options. */
+export const REQUEST_OPTIONS: readonly (RequestOption & { id: OptionId; groupId: GroupId })[] = [
+  ...REQUEST_GROUPS.flatMap((group) =>
     group.requests.map((request) => ({ ...request, groupId: group.id })),
-  )
+  ),
+  ...CHART_OPTIONS,
+]
 
 export const OPTION_IDS: readonly OptionId[] = REQUEST_OPTIONS.map((o) => o.id)
 
@@ -600,6 +562,9 @@ export const optionById = (id: OptionId) => {
   return found
 }
 
+/** The option for a stored id, or undefined for one from an older catalog. */
+export const findOption = (id: string) => REQUEST_OPTIONS.find((o) => o.id === id)
+
 export const groupById = (id: GroupId): RequestGroup => {
   const found = REQUEST_GROUPS.find((g) => g.id === id)
   if (!found) throw new Error(`Unknown request group: ${id}`)
@@ -607,16 +572,16 @@ export const groupById = (id: GroupId): RequestGroup => {
 }
 
 /**
- * The "I need help immediately" button. Always the nurse, urgent, never the AI. The tablet then
+ * The "I have an emergency" button. Always the nurse, urgent, never the AI. The tablet then
  * shows the emergency screen until the request is done or the patient taps "I pressed this by mistake".
  */
 export const NURSE_BUTTON = {
-  label: 'I need help immediately',
+  label: 'I have an emergency',
   team: 'nurse',
   category: 'nurse_call',
   urgency: 'urgent',
-  staffSummary: 'Patient pressed "I need help immediately"',
-} as const satisfies Omit<RequestOption, 'id'>
+  staffSummary: 'Patient pressed "I have an emergency"',
+} as const satisfies Omit<RequestOption, 'id' | 'sub'>
 
 /**
  * The request group a stored request belongs to, for its icon on the tablet. Jev tags each

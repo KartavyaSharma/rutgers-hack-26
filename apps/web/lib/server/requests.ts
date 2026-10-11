@@ -135,6 +135,10 @@ export const databaseOutlet: RequestOutlet = {
 export const createRequest = async (input: NewCallRequest): Promise<CallRequest> => {
   const request = await databaseOutlet.deliver(input)
   publish({ type: 'request.created', request })
+  // Staff app: Bell drafts a plan for the patient's nurse. Fire-and-forget, never breaks this flow.
+  import('./staff/intake')
+    .then((staff) => staff.queueTicket(request))
+    .catch((error: unknown) => console.error('[staff] ticket hook failed', error))
   return request
 }
 

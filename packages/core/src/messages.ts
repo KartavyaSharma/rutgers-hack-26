@@ -109,7 +109,7 @@ const quoted = (text: string, language: LanguageCode): string => {
 }
 
 const HAND_WRITTEN_HELP_LABELS: Record<HandWrittenLanguage, string> = {
-  en: 'I need help immediately',
+  en: 'I have an emergency',
   es: 'Necesito ayuda inmediata',
   zh: '我需要紧急帮助',
   tl: 'Kailangan ko ng tulong ngayon din',

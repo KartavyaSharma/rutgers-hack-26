@@ -25,8 +25,8 @@ const FAILURES: ReadonlyArray<RouteReason> = [
 describe.skipIf(!enabled)('Jev live', () => {
   it.each([
     ['can I get another blanket', 'care_aide', 'model', 'comfort'],
-    ['the TV remote is broken', 'facilities', 'model', 'fix_something'],
-    ['I feel sick to my stomach after my new medication', 'nurse', 'clinical', 'ask_care_team'],
+    ['the TV remote is broken', 'facilities', 'model', 'room'],
+    ['I feel sick to my stomach after my new medication', 'nurse', 'clinical', 'unwell'],
   ] as const)(
     '%j -> %s (%s, %s)',
     async (text, team, reason, group) => {

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@bell/core": "workspace:*",
+    "@bell/epic": "workspace:*",
     "@bell/ui": "workspace:*",
     "@electric-sql/pglite": "0.5.8",
     "drizzle-orm": "0.45.4",
@@ -21,7 +22,8 @@
     "next": "16.4.0",
     "postgres": "3.4.9",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "vosk-browser": "0.0.8"
   },
   "devDependencies": {
     "@next/env": "16.4.0",

@@ -41,16 +41,15 @@ const URGENCY_CRITERIA: Record<Urgency, string> = {
 
 // The home screen's request groups, so a classified request gets the same icon as its button.
 const GROUP_CRITERIA: Record<GroupId, string> = {
-  water_food: 'Water, ice chips, a drink, a snack, a meal tray or anything about food.',
-  bathroom: 'Help getting to the bathroom, a bedpan or a urinal.',
-  comfort: 'Comfort items: a blanket, pillow, socks.',
-  reposition: 'Help moving, sitting up or changing position in bed.',
-  beeping: 'A device, pump or monitor is beeping or alarming.',
-  cleaning: 'Cleaning: a spill, the room, the bathroom, trash, linens.',
-  fix_something:
-    'Something broken or not working: TV, remote, lights, Wi-Fi, the tablet, bed controls, temperature, blinds.',
-  ask_care_team:
-    'A question or anything else for the care team: pain, symptoms, medication, or anything unclear.',
+  unwell:
+    'Feeling unwell or anything medical: pain, nausea, dizziness, sleep, skin, an IV or a beeping machine.',
+  bathroom: 'Toilet help, a bedpan or urinal, an accident, washing up, teeth, a clean gown.',
+  move: 'Moving, sitting up, turning, getting out of bed, walking, reaching something, the bed not moving.',
+  food: 'Water, ice, a snack, a meal or tray, wrong food, or a question about diet.',
+  comfort: 'Comfort items: a blanket, pillow, socks, toiletries, a charger, earplugs, tissues.',
+  room: 'Something wrong in the room: too hot or cold, TV, lights, phone, Wi-Fi, or cleaning.',
+  questions: 'A question: the care plan, the doctor, test results, going home, medicines, bills, forms.',
+  talk: 'Talking to someone: chaplain, social worker, interpreter, feeling anxious, a concern, lost belongings.',
 }
 
 const GROUP_IDS: ReadonlyArray<GroupId> = REQUEST_GROUPS.map((group) => group.id)

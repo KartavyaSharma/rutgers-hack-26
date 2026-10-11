@@ -34,7 +34,7 @@ if (rootEnvFiles.some((file) => existsSync(path.join(repoRoot, file)))) {
 
 const nextConfig: NextConfig = {
   // Workspace packages export TypeScript source.
-  transpilePackages: ['@bell/core', '@bell/ui'],
+  transpilePackages: ['@bell/core', '@bell/epic', '@bell/ui'],
   // PGlite loads its WASM and data files relative to its own files at runtime.
   serverExternalPackages: ['@electric-sql/pglite'],
   turbopack: { root: repoRoot },

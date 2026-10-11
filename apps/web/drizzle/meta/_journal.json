@@ -15,6 +15,13 @@
       "when": 1791616443958,
       "tag": "0001_request_lifecycle_drop_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791694675349,
+      "tag": "0002_staff_app",
+      "breakpoints": true
     }
   ]
 }

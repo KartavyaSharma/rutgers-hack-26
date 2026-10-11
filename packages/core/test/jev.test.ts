@@ -69,12 +69,12 @@ interface Answer {
 
 /** A plausible request group per team, so most tests don't have to pick one. */
 const DEFAULT_GROUP: Record<Team, GroupId> = {
-  nurse: 'ask_care_team',
+  nurse: 'questions',
   care_aide: 'comfort',
-  housekeeping: 'cleaning',
-  facilities: 'fix_something',
-  food: 'water_food',
-  it: 'fix_something',
+  housekeeping: 'room',
+  facilities: 'room',
+  food: 'food',
+  it: 'room',
 }
 
 const GROUP_IDS: ReadonlyArray<GroupId> = REQUEST_GROUPS.map((g) => g.id)
@@ -195,12 +195,12 @@ describe('Jev request', () => {
 describe('Jev routing', () => {
   it.each([
     ['can I get another blanket', 'care_aide', 'routine', 'comfort'],
-    ['the TV remote is broken', 'facilities', 'routine', 'fix_something'],
-    ["there's a spill by the sink", 'housekeeping', 'soon', 'cleaning'],
-    ['my lunch tray never came', 'food', 'soon', 'water_food'],
-    ["the wifi isn't working on my laptop", 'it', 'routine', 'fix_something'],
-    ['when will the doctor come by', 'nurse', 'routine', 'ask_care_team'],
-    ['could you help me sit up', 'care_aide', 'soon', 'reposition'],
+    ['the TV remote is broken', 'facilities', 'routine', 'room'],
+    ["there's a spill by the sink", 'housekeeping', 'soon', 'room'],
+    ['my lunch tray never came', 'food', 'soon', 'food'],
+    ["the wifi isn't working on my laptop", 'it', 'routine', 'room'],
+    ['when will the doctor come by', 'nurse', 'routine', 'questions'],
+    ['could you help me sit up', 'care_aide', 'soon', 'move'],
   ] as const)('%j -> %s, group %s', async (text, team, urgency, group) => {
     const { fetch } = jev({ team, urgency, group, confidence: 0.93 })
     const result = await classifyRequest({ text }, { ...KEY, fetch })
@@ -339,7 +339,7 @@ describe('Jev routing', () => {
     const result = await classifyRequest({ text }, { ...KEY, fetch })
     expect(result).toMatchObject({
       team: 'nurse',
-      category: 'fix_something',
+      category: 'room',
       urgency: 'soon',
       confidence: 0.55,
       reason: 'low_confidence',
@@ -487,7 +487,7 @@ describe('makeClassifyRequest with a mock Jev service', () => {
     model: 'jev-test',
     team: 'food',
     teamConfidence: 0.9,
-    group: 'water_food',
+    group: 'food',
     clinical: 0.1,
     urgency: 'soon',
     ...overrides,
