@@ -1,0 +1,21 @@
+{
+  "name": "@bell/epic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'epic: no tests yet'"
+  },
+  "dependencies": {
+    "@bell/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "6.0.3"
+  }
+}
