@@ -1,6 +1,6 @@
 'use client'
 
-import { Maximize2 } from 'lucide-react'
+import { Maximize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useState } from 'react'
 import { BellNotes } from '@/components/bell/bell-notes'
 import { FactList } from '@/components/bell/fact-list'
@@ -26,12 +26,33 @@ export function AboutPanel({
   refreshKey: string
 }) {
   const [full, setFull] = useState(false)
+  // Collapsed stays collapsed while the nurse moves between requests.
+  const [collapsed, setCollapsed] = useState(false)
   const patient = useApi(`patient:${patientId}:${refreshKey}`, () => api.patient(patientId), {
     refreshMs: 10000,
   })
   // Keep the last patient's data off screen while the new one loads.
   const detail = patient.data?.chart.patient.id === patientId ? patient.data : undefined
   const others = detail?.requests.filter((r) => r.id !== excludeId) ?? []
+
+  if (collapsed) {
+    return (
+      <aside
+        aria-label={`About ${first}`}
+        className="flex w-12 shrink-0 flex-col items-center border-l border-[#EEE9E2] bg-[#FAF8F5] pt-[18px]"
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Show About ${first}`}
+          title={`Show About ${first}`}
+          onClick={() => setCollapsed(false)}
+        >
+          <PanelRightOpen />
+        </Button>
+      </aside>
+    )
+  }
 
   return (
     <aside
@@ -41,10 +62,21 @@ export function AboutPanel({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <b className="text-base">About {first}</b>
-          <Button variant="outline" size="sm" onClick={() => setFull(true)}>
-            <Maximize2 />
-            All details
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => setFull(true)}>
+              <Maximize2 />
+              All details
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Hide About ${first}`}
+              title={`Hide About ${first}`}
+              onClick={() => setCollapsed(true)}
+            >
+              <PanelRightClose />
+            </Button>
+          </div>
         </div>
         {detail ? (
           <BellNotes label="" size="sm">
