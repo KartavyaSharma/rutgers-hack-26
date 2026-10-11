@@ -36,6 +36,7 @@ export {
   type IconProps,
 } from './icon'
 export { type LanguageOption, LanguagePicker, type LanguagePickerProps } from './language-picker'
+export { fillText, TextProvider, type Translate, useT } from './text'
 export { MicTile, type MicTileProps } from './mic-tile'
 export {
   type MyRequestItem,

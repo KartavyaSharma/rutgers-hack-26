@@ -1,6 +1,9 @@
+'use client'
+
 import { cn, focusRing, pressable } from './cn'
 import { Icon } from './icon'
 import type { RequestPanelState } from './request-panel'
+import { useT } from './text'
 
 const COPY: Record<RequestPanelState, { title: string; hint: string }> = {
   idle: { title: 'Tap to speak', hint: 'Request something or ask a question' },
@@ -22,9 +25,10 @@ const BARS = [31, 69, 46, 83, 38]
 
 /**
  * The mic in the left column with voice only off. Anything said here goes to the nurse to
- * approve. "Hey Bell" is a line of text only; the wake word is not built.
+ * approve. "Hey Bell" also starts listening (use-wake-phrase in the web app).
  */
 export function MicTile({ state, onPress, listeningHint, className }: MicTileProps) {
+  const t = useT()
   const copy = COPY[state]
   const listening = state === 'listening'
   return (
@@ -61,14 +65,14 @@ export function MicTile({ state, onPress, listeningHint, className }: MicTilePro
           )}
         </span>
         <span className="flex flex-col gap-1.5">
-          <span className="font-heading text-[30px] leading-tight">{copy.title}</span>
+          <span className="font-heading text-[30px] leading-tight">{t(copy.title)}</span>
           <span className="text-body text-muted" aria-live="polite">
-            {listening && listeningHint ? listeningHint : copy.hint}
+            {listening && listeningHint ? listeningHint : t(copy.hint)}
           </span>
         </span>
       </span>
       {state === 'idle' ? (
-        <span className="mt-3 text-caption text-muted">or just say “Hey Bell”</span>
+        <span className="mt-3 text-caption text-muted">{t('or just say “Hey Bell”')}</span>
       ) : null}
     </button>
   )

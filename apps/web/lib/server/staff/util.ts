@@ -20,8 +20,9 @@ export const MINUTE = 60_000
 /** Start of the current shift window for "today" lists (the last 16 hours). */
 export const todayStart = (now = Date.now()): Date => new Date(now - 16 * 60 * MINUTE)
 
-/** "416A", or "414" for a room without beds. */
-export const bedLabel = (room: string, bed: string): string => `${room}${bed}`
+/** "416A", "412-3" for a numbered bed, or "414" for a room without beds. */
+export const bedLabel = (room: string, bed: string): string =>
+  /^\d+$/.test(bed) ? `${room}-${bed}` : `${room}${bed}`
 
 /** "Room 416, Bed A", or "Room 414". */
 export const roomLabel = (room: string, bed: string): string =>

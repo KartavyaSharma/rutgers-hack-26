@@ -196,6 +196,11 @@ export interface StreamEvent {
  */
 export const REQUESTS_CANCELLED_RPC = 'bell.requests_cancelled'
 
+/** Agent participant attribute: the language the patient was last heard speaking (a LanguageCode). */
+export const HEARD_LANGUAGE_ATTRIBUTE = 'bell.heard_language'
+/** Agent participant attribute: the patient asked for the screen in this language (a LanguageCode). */
+export const SCREEN_LANGUAGE_ATTRIBUTE = 'bell.screen_language'
+
 /** LiveKit agent name used for explicit dispatch from the token endpoint. */
 export const AGENT_NAME = 'bell-agent'
 

@@ -1,5 +1,8 @@
+'use client'
+
 import { cn, focusRing, pressable } from './cn'
 import { Icon } from './icon'
+import { useT } from './text'
 
 const pill = cn(
   'inline-flex min-h-tap items-center gap-2.5 whitespace-nowrap rounded-pill border-2 border-border bg-surface py-2 pr-5 pl-4 font-body text-body font-bold text-ink',
@@ -55,6 +58,7 @@ export function AppHeader({
   requestCount = 0,
   className,
 }: AppHeaderProps) {
+  const t = useT()
   return (
     <header className={cn('flex items-center justify-between gap-3', className)}>
       <div className="flex flex-col gap-0.5">
@@ -65,7 +69,7 @@ export function AppHeader({
         {onMyRequests ? (
           <button type="button" onClick={onMyRequests} className={pill}>
             <Icon name="list" className="text-action-ink" />
-            My requests
+            {t('My requests')}
             {requestCount > 0 ? (
               <span className="min-w-7 rounded-[14px] bg-action px-2.5 py-0.5 text-center text-caption text-on-action">
                 {requestCount}
@@ -80,7 +84,7 @@ export function AppHeader({
           onClick={() => onVoiceOnly(!voiceOnly)}
           className={cn(pill, 'gap-3 pr-3.5 pl-5')}
         >
-          Voice only
+          {t('Voice only')}
           <Toggle on={voiceOnly} />
         </button>
         <button

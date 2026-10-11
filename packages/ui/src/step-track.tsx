@@ -14,6 +14,15 @@ export const STEP_LABELS: Record<StepStatus, string> = {
   cancelled: 'Cancelled',
 }
 
+/** The step words in the screen language. */
+export const stepLabels = (t: (english: string) => string): Record<StepStatus, string> => ({
+  sent: t(STEP_LABELS.sent),
+  seen: t(STEP_LABELS.seen),
+  on_the_way: t(STEP_LABELS.on_the_way),
+  done: t(STEP_LABELS.done),
+  cancelled: t(STEP_LABELS.cancelled),
+})
+
 export interface StepTrackProps {
   status: StepStatus
   /** Override the words (e.g. translated). */

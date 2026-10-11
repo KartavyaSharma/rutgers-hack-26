@@ -10,6 +10,7 @@ import {
   classifyRequest as coreClassifyRequest,
   detectRedFlag,
   isLanguagePreference,
+  type LanguageCode,
   type LanguagePreference,
   needsNurseNow,
   patientMessage,
@@ -107,7 +108,8 @@ const NOOP_LOGGER: ToolLogger = { info() {}, warn() {}, error() {} }
 
 export class BellTools {
   readonly #roomId: string
-  readonly #roomLanguage: LanguagePreference
+  #roomLanguage: LanguagePreference
+  #chosenLanguage: LanguageCode | undefined
   readonly #api: ApiConfig
   readonly #classify: Classifier
   readonly #log: ToolLogger
@@ -161,6 +163,16 @@ export class BellTools {
   get classifyLanguage(): LanguagePreference {
     if (this.#roomLanguage !== 'auto') return this.#roomLanguage
     return isLanguagePreference(this.#heardLanguage) ? this.#heardLanguage : 'auto'
+  }
+
+  /** The patient asked for the app in this language ("in English, please"). Wins from now on. */
+  chooseLanguage(language: LanguageCode): void {
+    this.#roomLanguage = language
+    this.#chosenLanguage = language
+  }
+
+  get chosenLanguage(): LanguageCode | undefined {
+    return this.#chosenLanguage
   }
 
   /** Language the STT heard last, if any. */

@@ -9,7 +9,13 @@ import {
   MOST_USED_LANGUAGES,
   type RequestStatus,
 } from '@bell/core/taxonomy'
-import { GROUP_ICON, type IconName, type LanguageOption } from '@bell/ui'
+import {
+  fillText,
+  GROUP_ICON,
+  type IconName,
+  type LanguageOption,
+  type Translate,
+} from '@bell/ui'
 
 // Patient-facing words. Never a team name: the team stays in the data for the hospital side.
 
@@ -29,13 +35,16 @@ const withoutFinalPeriod = (text: string) => text.replace(/[.。]\s*$/u, '')
  * option, or "Help". For a nurse call the read-back is "I've let your nurse know.", so the
  * patient's own words are the label instead.
  */
-export const patientLabel = (request: CallRequest): string => {
-  if (request.source === 'nurse_button') return 'Help'
-  if (request.optionId) return findOption(request.optionId)?.label ?? request.staffSummary
+export const patientLabel = (request: CallRequest, t: Translate = fillText): string => {
+  if (request.source === 'nurse_button') return t('Help')
+  if (request.optionId) {
+    const option = findOption(request.optionId)
+    return option ? t(option.label) : request.staffSummary
+  }
   const words = request.text?.trim()
   const readBack = request.patientReply?.trim()
   if (isNurseCall(request) && words) return `“${words}”`
-  return withoutFinalPeriod(readBack || words || 'Your request')
+  return withoutFinalPeriod(readBack || words || t('Your request'))
 }
 
 /** The request's group icon; a mic for spoken requests without a group. */
@@ -55,15 +64,16 @@ const STATUS_LINES: Record<RequestStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-export const statusLine = (status: RequestStatus): string => STATUS_LINES[status]
+export const statusLine = (status: RequestStatus, t: Translate = fillText): string =>
+  t(STATUS_LINES[status])
 
 /** "Just now", "12 min ago", "2 hours ago". */
-export const timeAgo = (iso: string, now: number): string => {
+export const timeAgo = (iso: string, now: number, t: Translate = fillText): string => {
   const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000))
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes} min ago`
+  if (minutes < 1) return t('Just now')
+  if (minutes < 60) return t('{n} min ago', { n: minutes })
   const hours = Math.floor(minutes / 60)
-  return hours === 1 ? '1 hour ago' : `${hours} hours ago`
+  return hours === 1 ? t('1 hour ago') : t('{n} hours ago', { n: hours })
 }
 
 export const AUTO_LANGUAGE_LABEL = 'Auto (detect)'

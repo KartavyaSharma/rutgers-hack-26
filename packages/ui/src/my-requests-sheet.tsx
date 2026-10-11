@@ -4,7 +4,8 @@ import { Button } from './button'
 import { cn } from './cn'
 import { Icon, type IconName } from './icon'
 import { Sheet } from './overlay'
-import { STEP_LABELS, type StepStatus, StepTrack } from './step-track'
+import { STEP_LABELS, type StepStatus, StepTrack, stepLabels } from './step-track'
+import { useT } from './text'
 
 export interface MyRequestItem {
   id: string
@@ -46,8 +47,9 @@ export function MyRequestsSheet({
   busyId = null,
   container,
 }: MyRequestsSheetProps) {
+  const t = useT()
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title="My requests" fill container={container}>
+    <Sheet open={open} onOpenChange={onOpenChange} title={t('My requests')} fill container={container}>
       <div className="flex flex-col gap-3">
         <h3 className={cn(sectionLabel, 'font-body')}>Open now</h3>
         {openItems.length === 0 ? (
@@ -74,10 +76,10 @@ export function MyRequestsSheet({
                   </span>
                 </div>
               </div>
-              <StepTrack status={item.status} />
+              <StepTrack status={item.status} labels={stepLabels(t)} />
               <div className="flex items-center justify-end gap-3">
                 {item.nudged ? (
-                  <span className="px-2 text-body font-bold text-muted">Reminder sent</span>
+                  <span className="px-2 text-body font-bold text-muted">{t('Reminder sent')}</span>
                 ) : (
                   <Button
                     variant="secondary"
@@ -85,7 +87,7 @@ export function MyRequestsSheet({
                     onClick={() => onNudge(item.id)}
                     disabled={busy}
                   >
-                    Still waiting?
+                    {t('Still waiting?')}
                   </Button>
                 )}
                 <Button
@@ -94,16 +96,16 @@ export function MyRequestsSheet({
                   onClick={() => onCancel(item.id)}
                   disabled={busy}
                 >
-                  Cancel
+                  {t('Cancel')}
                 </Button>
               </div>
             </article>
           )
         })}
 
-        <h3 className={cn(sectionLabel, 'mt-2 font-body')}>Earlier</h3>
+        <h3 className={cn(sectionLabel, 'mt-2 font-body')}>{t('Earlier')}</h3>
         {earlierItems.length === 0 ? (
-          <p className="text-lead text-muted">Nothing earlier today.</p>
+          <p className="text-lead text-muted">{t('Nothing earlier today.')}</p>
         ) : null}
         {earlierItems.map((item) => (
           <div
@@ -118,7 +120,7 @@ export function MyRequestsSheet({
                 item.status === 'done' ? 'text-action-ink' : 'text-muted',
               )}
             >
-              {STEP_LABELS[item.status]}
+              {t(STEP_LABELS[item.status])}
             </span>
           </div>
         ))}

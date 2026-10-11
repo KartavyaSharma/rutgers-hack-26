@@ -32,6 +32,7 @@ import {
   refuse,
 } from './store'
 import { syncTabletRequest } from './tasks'
+import { languageName } from './translate'
 import { bedLabel, newId, roomLabel, TIER_RANK, todayStart } from './util'
 
 const EMPTY_PLAN: Plan = { goal: '', send: [], why: '' }
@@ -74,6 +75,15 @@ export const toIncomingItem = (
     plan: rec?.plan ?? EMPTY_PLAN,
     state: ticket.state === 'needs_ok' && !cancelled ? 'needs_ok' : 'handled',
     ...(note ? { handledNote: note } : {}),
+    ...(ticket.details.original && ticket.language
+      ? {
+          original: {
+            language: languageName(ticket.language),
+            words: ticket.details.original.text,
+            translated: ticket.details.original.translated,
+          },
+        }
+      : {}),
   }
 }
 

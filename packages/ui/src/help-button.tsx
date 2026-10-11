@@ -1,6 +1,9 @@
+'use client'
+
 import type { ComponentProps } from 'react'
 import { cn, focusRing, pressable } from './cn'
 import { Icon } from './icon'
+import { useT } from './text'
 
 export interface HelpButtonProps extends Omit<ComponentProps<'button'>, 'children' | 'onClick'> {
   onPress: () => void
@@ -17,13 +20,14 @@ export function HelpButton({
   onPress,
   busy = false,
   label = 'I have an emergency',
-  busyLabel = 'Calling your nurse…',
+  busyLabel,
   size = 'tall',
   className,
   type = 'button',
   disabled,
   ...props
 }: HelpButtonProps) {
+  const t = useT()
   const short = size === 'short'
   return (
     <button
@@ -57,7 +61,7 @@ export function HelpButton({
           short ? 'text-[25px] leading-[1.1]' : 'text-display',
         )}
       >
-        {busy ? busyLabel : label}
+        {busy ? (busyLabel ?? t('Calling your nurse…')) : label}
       </span>
     </button>
   )

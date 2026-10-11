@@ -1,6 +1,12 @@
 'use client'
 
-import type { LanguagePreference } from '@bell/core/taxonomy'
+import {
+  HEARD_LANGUAGE_ATTRIBUTE,
+  isLanguageCode,
+  type LanguageCode,
+  type LanguagePreference,
+  SCREEN_LANGUAGE_ATTRIBUTE,
+} from '@bell/core/taxonomy'
 import type {
   LocalAudioTrack,
   Participant,
@@ -75,6 +81,8 @@ interface Options {
   language: LanguagePreference
   /** False when the server has no LiveKit keys. */
   enabled: boolean
+  /** The agent heard the patient speak a language, or the patient asked for the screen in one. */
+  onLanguage?: (language: LanguageCode, how: 'heard' | 'asked') => void
 }
 
 /**
@@ -82,7 +90,9 @@ interface Options {
  * start -> token -> connect -> mic on ('listening'); the agent's `lk.agent.state` attribute drives
  * 'thinking'/'speaking'; stop() hangs up; it also hangs up by itself a while after the agent's reply.
  */
-export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
+export const useVoiceSession = ({ roomId, language, enabled, onLanguage }: Options) => {
+  const onLanguageRef = useRef(onLanguage)
+  onLanguageRef.current = onLanguage
   const [state, setState] = useState<VoiceState>('idle')
   const [mode, setMode] = useState<VoiceMode | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -238,6 +248,12 @@ export const useVoiceSession = ({ roomId, language, enabled }: Options) => {
             if (participant.isAgent && connected && isCurrent()) void stop()
           })
           .on(RoomEvent.ParticipantAttributesChanged, (changed, participant) => {
+            if (participant.isAgent && isCurrent()) {
+              const heard = changed[HEARD_LANGUAGE_ATTRIBUTE]
+              if (isLanguageCode(heard)) onLanguageRef.current?.(heard, 'heard')
+              const asked = changed[SCREEN_LANGUAGE_ATTRIBUTE]
+              if (isLanguageCode(asked)) onLanguageRef.current?.(asked, 'asked')
+            }
             if (!participant.isAgent || !(AGENT_STATE_ATTRIBUTE in changed)) return
             const next = fromAgentState(changed[AGENT_STATE_ATTRIBUTE])
             if (!next) return

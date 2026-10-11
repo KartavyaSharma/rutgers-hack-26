@@ -67,6 +67,10 @@ const patchRequest = async (
 export const requestAction = (id: string, action: 'cancel' | 'nudge'): Promise<CallRequest> =>
   patchRequest(id, { action })
 
+/** "Resolved by staff" on the emergency screen: the nurse at the bedside closes the call. */
+export const resolveRequest = (id: string): Promise<CallRequest> =>
+  patchRequest(id, { action: 'done' })
+
 /** Staff dev view: set a status directly. */
 export const setRequestStatus = (id: string, status: RequestStatus): Promise<CallRequest> =>
   patchRequest(id, { status })

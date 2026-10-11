@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bell Tablet Explorations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;800&family=Lexend:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --canvas:#E7E6E3; --label:#3A3A3A; --sub:#6E6E6E; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--canvas); font-family:Inter, system-ui, sans-serif; color:var(--label); padding:40px 16px 80px; }
+  .intro { max-width:1024px; margin:0 auto 32px; }
+  .intro h1 { font-size:22px; font-weight:700; }
+  .intro p { color:var(--sub); font-size:14px; margin-top:6px; }
+  .board { max-width:1024px; margin:0 auto 56px; }
+  .board h2 { font-size:15px; font-weight:700; }
+  .board .note { font-size:13px; color:var(--sub); margin:4px 0 12px; }
+  .frame { width:100%; aspect-ratio:1024/768; position:relative; overflow:hidden; border-radius:14px; box-shadow:0 1px 2px rgba(0,0,0,.08), 0 8px 30px rgba(0,0,0,.08); }
+  .screen { width:1024px; height:768px; position:absolute; top:0; left:0; transform-origin:0 0; overflow:hidden; }
+  svg.i { width:1em; height:1em; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+  button { font:inherit; color:inherit; border:0; background:none; cursor:pointer; text-align:left; }
+
+  /* ---------- 1 · PAPER ---------- */
+  .s1 { --bg:#F6F4EF; --ink:#1E2A2E; --muted:#5E6A6C; --line:#D9D4C8; --acc:#1F5F5B; --tile:#ECE8DF; --help:#B8461F;
+    background:var(--bg); color:var(--ink); font-family:"Public Sans", sans-serif; display:grid; grid-template-columns:1fr 300px; grid-template-rows:84px 1fr; }
+  .s1 header { grid-column:1/3; display:flex; align-items:center; padding:0 40px; border-bottom:2px solid var(--ink); gap:24px; }
+  .s1 .room { font-weight:800; font-size:22px; letter-spacing:-.01em; }
+  .s1 .time { color:var(--muted); font-size:20px; }
+  .s1 .lang { margin-left:auto; display:flex; align-items:center; gap:10px; font-size:20px; font-weight:600; padding:12px 18px; border:2px solid var(--ink); border-radius:4px; }
+  .s1 .help { display:flex; align-items:center; gap:12px; background:var(--help); color:#fff; font-weight:800; font-size:22px; padding:14px 22px; border-radius:4px; }
+  .s1 .help .i { font-size:28px; }
+  .s1 main { padding:36px 40px; display:flex; flex-direction:column; gap:24px; }
+  .s1 .ask { flex:1; background:var(--acc); color:#fff; border-radius:4px; padding:36px; display:flex; flex-direction:column; justify-content:space-between; }
+  .s1 .ask .i { font-size:64px; stroke-width:1.8; }
+  .s1 .ask b { font-size:64px; font-weight:800; letter-spacing:-.03em; line-height:1; }
+  .s1 .ask span { display:block; font-size:22px; opacity:.85; margin-top:12px; }
+  .s1 .quick { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+  .s1 .quick button { background:var(--tile); border-bottom:4px solid var(--ink); border-radius:4px; padding:22px 20px; font-size:24px; font-weight:600; height:120px; display:flex; flex-direction:column; justify-content:space-between; }
+  .s1 .quick .i { font-size:30px; }
+  .s1 aside { border-left:2px solid var(--ink); padding:36px 28px; }
+  .s1 aside h3 { font-size:15px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:18px; }
+  .s1 .req { border-top:1px solid var(--line); padding:20px 0; }
+  .s1 .req b { font-size:26px; font-weight:700; display:block; }
+  .s1 .req span { font-size:19px; color:var(--acc); font-weight:600; display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .s1 .req span::before { content:""; width:10px; height:10px; border-radius:50%; background:currentColor; }
+  .s1 .req.done span { color:var(--muted); }
+
+  /* ---------- 2 · BENTO ---------- */
+  .s2 { --bg:#E9EFE8; --ink:#1F2E27; --muted:#5A6B62; --acc:#2E6A4E; --card:#FFFFFF; --soft:#D8E5DA; --help:#E9A23B;
+    background:var(--bg); color:var(--ink); font-family:Lexend, sans-serif; padding:28px; display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:56px 1fr 1fr 1fr; gap:18px; }
+  .s2 header { grid-column:1/5; display:flex; align-items:center; justify-content:space-between; padding:0 6px; }
+  .s2 header b { font-size:24px; font-weight:500; }
+  .s2 header b small { color:var(--muted); font-weight:400; font-size:20px; margin-left:10px; }
+  .s2 .chip { display:flex; align-items:center; gap:10px; background:var(--card); padding:12px 20px; border-radius:999px; font-size:19px; }
+  .s2 .t { border-radius:28px; background:var(--card); padding:24px; display:flex; flex-direction:column; justify-content:space-between; font-size:24px; font-weight:500; }
+  .s2 .t .i { font-size:38px; color:var(--acc); }
+  .s2 .ask { grid-column:1/3; grid-row:2/4; background:var(--acc); color:#fff; padding:36px; }
+  .s2 .ask .ring { width:120px; height:120px; border-radius:50%; background:rgba(255,255,255,.16); display:grid; place-items:center; }
+  .s2 .ask .ring .i { font-size:56px; color:#fff; }
+  .s2 .ask b { font-size:48px; font-weight:700; line-height:1.05; }
+  .s2 .help { grid-column:3/5; grid-row:2/3; background:var(--help); color:#2A1B05; flex-direction:row; align-items:center; gap:22px; justify-content:flex-start; }
+  .s2 .help .i { font-size:56px; color:#2A1B05; }
+  .s2 .help b { font-size:34px; font-weight:700; }
+  .s2 .help small { display:block; font-size:19px; font-weight:400; opacity:.8; margin-top:4px; }
+  .s2 .reqs { grid-column:1/3; grid-row:4/5; background:var(--soft); justify-content:flex-start; gap:12px; }
+  .s2 .reqs h3 { font-size:18px; font-weight:500; color:var(--muted); }
+  .s2 .reqs div { display:flex; justify-content:space-between; align-items:center; background:var(--card); border-radius:16px; padding:12px 18px; font-size:22px; }
+  .s2 .reqs em { font-style:normal; font-size:17px; color:var(--acc); background:var(--soft); padding:4px 12px; border-radius:999px; }
+
+  /* ---------- 3 · CENTER STAGE ---------- */
+  .s3 { --bg:#FBF7F0; --ink:#25262E; --muted:#6A6760; --acc:#0F6870; --line:#E8E0D2; --pill:#FFFFFF; --help:#C25418;
+    background:var(--bg); color:var(--ink); font-family:Inter, sans-serif; }
+  .s3 header { position:absolute; top:40px; left:48px; right:48px; display:flex; align-items:flex-start; }
+  .s3 h1 { font-family:Fraunces, serif; font-weight:500; font-size:44px; letter-spacing:-.01em; line-height:1.05; }
+  .s3 h1 small { display:block; font-family:Inter; font-size:19px; color:var(--muted); margin-top:8px; font-weight:400; }
+  .s3 .right { margin-left:auto; display:flex; gap:14px; }
+  .s3 .lang { display:flex; align-items:center; gap:10px; font-size:19px; font-weight:500; height:64px; padding:0 22px; border:1.5px solid var(--line); border-radius:999px; background:var(--pill); }
+  .s3 .help { display:flex; align-items:center; gap:12px; background:var(--help); color:#fff; font-size:21px; font-weight:600; height:64px; padding:0 26px 0 20px; border-radius:999px; }
+  .s3 .help .i { font-size:28px; }
+  .s3 .stage { position:absolute; left:0; right:0; top:170px; display:flex; flex-direction:column; align-items:center; }
+  .s3 .mic { width:236px; height:236px; border-radius:50%; background:var(--acc); color:#fff; display:grid; place-items:center; box-shadow:0 0 0 18px #E3EEEC, 0 0 0 36px #F0F4F1; }
+  .s3 .mic .i { font-size:92px; stroke-width:1.6; }
+  .s3 .stage b { font-family:Fraunces, serif; font-weight:700; font-size:40px; margin-top:56px; }
+  .s3 .stage span { color:var(--muted); font-size:20px; margin-top:6px; }
+  .s3 .mine { position:absolute; left:48px; top:200px; width:210px; display:flex; flex-direction:column; gap:12px; }
+  .s3 .mine h3 { font-size:16px; color:var(--muted); font-weight:500; }
+  .s3 .mine div { background:var(--pill); border:1.5px solid var(--line); border-radius:18px; padding:14px 16px; font-size:20px; font-weight:600; }
+  .s3 .mine div small { display:block; font-weight:400; font-size:16px; color:var(--acc); margin-top:2px; }
+  .s3 .dock { position:absolute; left:48px; right:48px; bottom:40px; display:flex; gap:14px; justify-content:center; }
+  .s3 .dock button { white-space:nowrap; display:flex; align-items:center; gap:12px; background:var(--pill); border:1.5px solid var(--line); height:84px; padding:0 24px; border-radius:999px; font-size:22px; font-weight:500; }
+  .s3 .dock .i { font-size:28px; color:var(--acc); }
+
+  /* ---------- 4 · SPLIT ---------- */
+  .s4 { --left:#DFE5F3; --ink:#1C2748; --muted:#58617A; --acc:#2C4BA0; --right:#FFFFFF; --row:#F4F6FA; --line:#E2E6EF; --help:#B3472B;
+    background:var(--right); color:var(--ink); font-family:"IBM Plex Sans", sans-serif; display:grid; grid-template-columns:420px 1fr; }
+  .s4 .l { background:var(--left); padding:32px; display:flex; flex-direction:column; gap:22px; }
+  .s4 .top { display:flex; justify-content:space-between; align-items:center; font-size:20px; font-weight:600; }
+  .s4 .top .lang { display:flex; align-items:center; gap:8px; font-weight:500; background:rgba(255,255,255,.7); padding:10px 16px; border-radius:10px; }
+  .s4 .help { background:var(--help); color:#fff; border-radius:16px; height:110px; display:flex; align-items:center; gap:18px; padding:0 26px; font-size:28px; font-weight:700; }
+  .s4 .help .i { font-size:44px; }
+  .s4 .ask { flex:1; background:#fff; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; }
+  .s4 .ask .m { width:150px; height:150px; border-radius:40px; background:var(--acc); color:#fff; display:grid; place-items:center; }
+  .s4 .ask .m .i { font-size:70px; }
+  .s4 .ask b { font-size:36px; font-weight:700; }
+  .s4 .ask span { font-size:19px; color:var(--muted); margin-top:-12px; display:flex; align-items:center; gap:8px; }
+  .s4 .r { padding:40px 40px 32px; display:flex; flex-direction:column; }
+  .s4 h3 { font-size:17px; font-weight:600; color:var(--muted); margin-bottom:14px; }
+  .s4 .list { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .s4 .list button { display:flex; align-items:center; gap:16px; background:var(--row); border-radius:14px; height:104px; padding:0 20px; font-size:24px; font-weight:500; }
+  .s4 .list .ic { width:48px; height:48px; border-radius:12px; background:#fff; display:grid; place-items:center; color:var(--acc); font-size:28px; }
+  .s4 .mine { margin-top:auto; }
+  .s4 .mine .row { display:flex; align-items:center; gap:18px; border-top:1px solid var(--line); padding:16px 4px; font-size:23px; font-weight:500; }
+  .s4 .steps { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:17px; color:var(--muted); font-weight:400; }
+  .s4 .steps i { width:28px; height:6px; border-radius:3px; background:var(--line); display:inline-block; }
+  .s4 .steps i.on { background:var(--acc); }
+  .s4 .steps span { margin-left:10px; width:120px; }
+
+  /* ---------- 5 · COMPOSER ---------- */
+  .s5 { --bg:#F3F5F7; --ink:#18222E; --muted:#5C6773; --acc:#2456B8; --card:#FFFFFF; --line:#E1E5EA; --help:#C2410C; --helpbg:#FCEBDD;
+    background:var(--bg); color:var(--ink); font-family:Manrope, sans-serif; display:flex; flex-direction:column; padding:28px 36px 32px; }
+  .s5 header { display:flex; align-items:center; gap:16px; }
+  .s5 header b { font-size:22px; font-weight:800; }
+  .s5 header .lang { margin-left:auto; display:flex; align-items:center; gap:10px; font-size:19px; font-weight:600; color:var(--muted); padding:10px 16px; }
+  .s5 .help { display:flex; align-items:center; gap:14px; background:var(--helpbg); color:var(--help); border:2px solid var(--help); border-radius:20px; padding:14px 24px; font-size:22px; font-weight:800; }
+  .s5 .help .i { font-size:30px; }
+  .s5 .feed { flex:1; display:flex; flex-direction:column; justify-content:flex-end; gap:14px; padding:24px 0; }
+  .s5 .feed .day { align-self:center; font-size:16px; color:var(--muted); font-weight:600; }
+  .s5 .bubble { align-self:flex-end; max-width:520px; background:var(--card); border:1px solid var(--line); border-radius:24px 24px 6px 24px; padding:18px 22px; display:flex; align-items:center; gap:18px; font-size:24px; font-weight:700; }
+  .s5 .bubble small { font-size:17px; font-weight:600; color:var(--acc); background:#E6EDFA; padding:6px 12px; border-radius:999px; white-space:nowrap; }
+  .s5 .bubble.done small { color:var(--muted); background:#EDF0F3; }
+  .s5 .sugg { display:flex; gap:12px; margin-bottom:16px; }
+  .s5 .sugg button { flex:1; display:flex; align-items:center; justify-content:center; gap:12px; height:96px; background:var(--card); border:1.5px solid var(--line); border-radius:20px; font-size:22px; font-weight:700; }
+  .s5 .sugg .i { font-size:26px; color:var(--acc); }
+  .s5 .bar { display:flex; align-items:center; gap:16px; height:112px; background:var(--acc); color:#fff; border-radius:30px; padding:0 16px 0 36px; }
+  .s5 .bar b { font-size:34px; font-weight:800; }
+  .s5 .bar span { font-size:19px; opacity:.8; font-weight:500; margin-left:4px; }
+  .s5 .bar .m { width:84px; height:84px; border-radius:22px; background:#fff; color:var(--acc); display:grid; place-items:center; }
+  .s5 .bar .m .i { font-size:40px; }
+  .s5 .bar .k { margin-left:auto; width:84px; height:84px; border-radius:22px; background:rgba(255,255,255,.16); display:grid; place-items:center; }
+  .s5 .bar .k .i { font-size:34px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3.5"/></symbol>
+    <symbol id="alarm" viewBox="0 0 24 24"><path d="M6.5 18v-5a5.5 5.5 0 0 1 11 0v5"/><path d="M4 21.5h16"/><path d="M4 18h16v3.5H4z"/><path d="M12 2v2.2M4.2 5.2l1.6 1.6M19.8 5.2l-1.6 1.6M1.5 12h2M20.5 12h2"/><path d="M12 10.5a2.5 2.5 0 0 0-2.5 2.5"/></symbol>
+    <symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.8 3 2.8 16 0 19M12 2.5c-2.8 3-2.8 16 0 19"/></symbol>
+    <symbol id="water" viewBox="0 0 24 24"><path d="M12 2.8S5.5 10 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10 12 2.8 12 2.8z"/></symbol>
+    <symbol id="blanket" viewBox="0 0 24 24"><path d="M3 7.5h18v11H3z"/><path d="M3 11.5h18M8 7.5v11"/></symbol>
+    <symbol id="bath" viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M12 15l-3 6.5M12 15l3 6.5M8 11h8"/></symbol>
+    <symbol id="temp" viewBox="0 0 24 24"><path d="M10 14.5V4.5a2 2 0 0 1 4 0v10a4 4 0 1 1-4 0z"/><path d="M12 9v8"/></symbol>
+    <symbol id="tv" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="12.5" rx="2"/><path d="M8 21h8M9 2.5l3 2.5 3-2.5"/></symbol>
+    <symbol id="food" viewBox="0 0 24 24"><path d="M6 2.5v8a2 2 0 0 0 4 0v-8M8 10.5v11M17 2.5c-2 0-3 2.5-3 6v4h3v9"/></symbol>
+    <symbol id="key" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+  </defs>
+</svg>
+
+<div class="intro">
+  <h1>Bell tablet · 5 fresh directions</h1>
+  <p>Same home screen five ways, each with its own layout, type and colors. Not using the Bell Design System. 1024 × 768 tablet, landscape.</p>
+</div>
+
+<!-- 1 -->
+<section class="board">
+  <h2>1 · Paper</h2>
+  <p class="note">Print-like and strict. Square corners, one green, heavy rules. Requests live in a fixed column on the right.</p>
+  <div class="frame"><div class="screen s1">
+    <header>
+      <span class="room">Room 412</span><span class="time">Tuesday 9:41</span>
+      <button class="lang"><svg class="i"><use href="#globe"/></svg>English</button>
+      <button class="help"><svg class="i"><use href="#alarm"/></svg>Help now</button>
+    </header>
+    <main>
+      <button class="ask"><svg class="i"><use href="#mic"/></svg><div><b>Make a request</b><span>Tap and say what you need</span></div></button>
+      <div class="quick">
+        <button><svg class="i"><use href="#water"/></svg>Water</button>
+        <button><svg class="i"><use href="#bath"/></svg>Bathroom</button>
+        <button><svg class="i"><use href="#blanket"/></svg>Blanket</button>
+        <button><svg class="i"><use href="#temp"/></svg>Too hot or cold</button>
+      </div>
+    </main>
+    <aside>
+      <h3>My requests</h3>
+      <div class="req"><b>Water</b><span>On the way</span></div>
+      <div class="req"><b>Fix the TV</b><span>Sent</span></div>
+      <div class="req done"><b>Blanket</b><span>Done</span></div>
+    </aside>
+  </div></div>
+</section>
+
+<!-- 2 -->
+<section class="board">
+  <h2>2 · Bento</h2>
+  <p class="note">Soft rounded tiles in a sage room. Big friendly blocks, help in warm amber instead of red.</p>
+  <div class="frame"><div class="screen s2">
+    <header><b>Room 412<small>Tuesday 9:41</small></b><button class="chip"><svg class="i"><use href="#globe"/></svg>English</button></header>
+    <button class="t ask"><div class="ring"><svg class="i"><use href="#mic"/></svg></div><b>Make a<br>request</b></button>
+    <button class="t help"><svg class="i"><use href="#alarm"/></svg><div><b>Help now</b><small>A nurse comes right away</small></div></button>
+    <button class="t"><svg class="i"><use href="#water"/></svg>Water</button>
+    <button class="t"><svg class="i"><use href="#bath"/></svg>Bathroom</button>
+    <div class="t reqs">
+      <h3>My requests</h3>
+      <div>Water <em>On the way</em></div>
+      <div>Fix the TV <em>Sent</em></div>
+    </div>
+    <button class="t"><svg class="i"><use href="#blanket"/></svg>Blanket</button>
+    <button class="t"><svg class="i"><use href="#food"/></svg>Food</button>
+  </div></div>
+</section>
+
+<!-- 3 -->
+<section class="board">
+  <h2>3 · Center stage</h2>
+  <p class="note">One big button in the middle, like a phone call. Quick asks sit in a dock at the bottom. Serif greeting, cream and teal.</p>
+  <div class="frame"><div class="screen s3">
+    <header>
+      <h1>Good morning<small>Room 412 · Tuesday 9:41</small></h1>
+      <div class="right">
+        <button class="lang"><svg class="i"><use href="#globe"/></svg>English</button>
+        <button class="help"><svg class="i"><use href="#alarm"/></svg>Help now</button>
+      </div>
+    </header>
+    <div class="mine">
+      <h3>My requests</h3>
+      <div>Water<small>On the way</small></div>
+      <div>Fix the TV<small>Sent</small></div>
+    </div>
+    <div class="stage">
+      <button class="mic"><svg class="i"><use href="#mic"/></svg></button>
+      <b>Make a request</b>
+      <span>Tap and say what you need</span>
+    </div>
+    <div class="dock">
+      <button><svg class="i"><use href="#water"/></svg>Water</button>
+      <button><svg class="i"><use href="#bath"/></svg>Bathroom</button>
+      <button><svg class="i"><use href="#blanket"/></svg>Blanket</button>
+      <button><svg class="i"><use href="#temp"/></svg>Room temp</button>
+      <button><svg class="i"><use href="#tv"/></svg>TV</button>
+    </div>
+  </div></div>
+</section>
+
+<!-- 4 -->
+<section class="board">
+  <h2>4 · Split</h2>
+  <p class="note">Left half is for urgent and speaking, right half for everything else. Calm periwinkle and white, progress shown as short bars.</p>
+  <div class="frame"><div class="screen s4">
+    <div class="l">
+      <div class="top"><span>Room 412</span><button class="lang"><svg class="i"><use href="#globe"/></svg>English</button></div>
+      <button class="help"><svg class="i"><use href="#alarm"/></svg>Help now</button>
+      <button class="ask"><div class="m"><svg class="i"><use href="#mic"/></svg></div><b>Make a request</b><span>or <svg class="i"><use href="#key"/></svg> type it</span></button>
+    </div>
+    <div class="r">
+      <h3>Quick requests</h3>
+      <div class="list">
+        <button><span class="ic"><svg class="i"><use href="#water"/></svg></span>Water</button>
+        <button><span class="ic"><svg class="i"><use href="#bath"/></svg></span>Bathroom</button>
+        <button><span class="ic"><svg class="i"><use href="#blanket"/></svg></span>Blanket</button>
+        <button><span class="ic"><svg class="i"><use href="#food"/></svg></span>Food</button>
+        <button><span class="ic"><svg class="i"><use href="#temp"/></svg></span>Room temp</button>
+        <button><span class="ic"><svg class="i"><use href="#tv"/></svg></span>TV</button>
+      </div>
+      <div class="mine">
+        <h3>My requests</h3>
+        <div class="row">Water<span class="steps"><i class="on"></i><i class="on"></i><i></i><span>On the way</span></span></div>
+        <div class="row">Fix the TV<span class="steps"><i class="on"></i><i></i><i></i><span>Sent</span></span></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- 5 -->
+<section class="board">
+  <h2>5 · Composer</h2>
+  <p class="note">Built like a messaging app. Requests stack up like sent messages, suggestions sit above a wide "Make a request" bar at the bottom.</p>
+  <div class="frame"><div class="screen s5">
+    <header>
+      <b>Room 412</b>
+      <button class="lang"><svg class="i"><use href="#globe"/></svg>English</button>
+      <button class="help"><svg class="i"><use href="#alarm"/></svg>Help now</button>
+    </header>
+    <div class="feed">
+      <span class="day">Today</span>
+      <div class="bubble done">Blanket <small>Done</small></div>
+      <div class="bubble">Fix the TV <small>Sent</small></div>
+      <div class="bubble">Water <small>On the way</small></div>
+    </div>
+    <div class="sugg">
+      <button><svg class="i"><use href="#water"/></svg>Water</button>
+      <button><svg class="i"><use href="#bath"/></svg>Bathroom</button>
+      <button><svg class="i"><use href="#blanket"/></svg>Blanket</button>
+      <button><svg class="i"><use href="#food"/></svg>Food</button>
+    </div>
+    <div class="bar">
+      <b>Make a request</b><span>Tap and speak</span>
+      <button class="k"><svg class="i"><use href="#key"/></svg></button>
+      <button class="m"><svg class="i"><use href="#mic"/></svg></button>
+    </div>
+  </div></div>
+</section>
+
+<script>
+  function fit(){ document.querySelectorAll('.frame').forEach(f=>{ f.firstElementChild.style.transform='scale('+(f.clientWidth/1024)+')'; }); }
+  addEventListener('resize', fit); fit();
+  document.fonts && document.fonts.ready.then(fit);
+</script>
+</body>
+</html>

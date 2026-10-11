@@ -554,6 +554,7 @@ export class ScribeSTT extends stt.STT {
     throw new Error('ScribeSTT only supports streaming; use stream()')
   }
 
+  // TODO(cost): only stream audio to Scribe while the patient is speaking; Scribe bills per streamed second.
   stream(options?: { connOptions?: APIConnectOptions }): stt.SpeechStream {
     return new ScribeSpeechStream(this, this.#vad, {
       scribe: this.#options.scribe,

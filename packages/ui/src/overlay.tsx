@@ -4,6 +4,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import type { ReactNode } from 'react'
 import { Button } from './button'
 import { cn } from './cn'
+import { useT } from './text'
 
 interface OverlayBase {
   open: boolean
@@ -119,11 +120,12 @@ export interface SheetProps extends OverlayBase {
 export function Sheet({
   title,
   children,
-  doneLabel = 'Done',
+  doneLabel,
   fill = false,
   className,
   ...overlay
 }: SheetProps) {
+  const t = useT()
   return (
     <Overlay
       {...overlay}
@@ -140,7 +142,7 @@ export function Sheet({
         </DialogPrimitive.Title>
         <DialogPrimitive.Close asChild>
           <Button variant="primary" size="md" className="px-8">
-            {doneLabel}
+            {doneLabel ?? t('Done')}
           </Button>
         </DialogPrimitive.Close>
       </div>

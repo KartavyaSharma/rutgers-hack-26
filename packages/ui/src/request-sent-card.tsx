@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent } from 'react'
 import { Button } from './button'
 import { cn } from './cn'
 import { Icon, type IconName } from './icon'
+import { useT } from './text'
 
 export interface SentCardItem {
   id: string
@@ -44,6 +45,7 @@ export function RequestSentCard({
   resetKey,
   className,
 }: RequestSentCardProps) {
+  const t = useT()
   // The timer: restarts when resetKey changes; holds off while deleting.
   const timeUp = useEffectEvent(() => onDone())
   // biome-ignore lint/correctness/useExhaustiveDependencies: resetKey restarts the timer on purpose
@@ -56,7 +58,7 @@ export function RequestSentCard({
   const several = items.length > 1
   return (
     <section
-      aria-label="Request sent"
+      aria-label={t('Request sent')}
       className={cn(
         'relative flex min-w-0 flex-col justify-center gap-3 rounded-lg bg-surface px-11 py-10 text-ink',
         className,
@@ -96,14 +98,14 @@ export function RequestSentCard({
             </span>
           </span>
           <span className="flex flex-col gap-1">
-            <span className="text-title font-bold">Still listening</span>
-            <span className="text-lead text-muted">To change the request, just talk.</span>
+            <span className="text-title font-bold">{t('Still listening')}</span>
+            <span className="text-lead text-muted">{t('To change the request, just talk.')}</span>
           </span>
         </div>
       ) : null}
 
       <p className={cn('text-label font-bold text-action-ink', listening && 'mt-9')}>
-        Request sent
+        {t('Request sent')}
       </p>
       <ul className={cn('flex flex-col', several ? 'gap-3' : 'gap-0')}>
         {items.map((item) => (
@@ -130,12 +132,14 @@ export function RequestSentCard({
           </li>
         ))}
       </ul>
-      <p className="text-label text-muted">Someone is coming.</p>
-      <p className="hidden text-body text-muted motion-reduce:block">Closes in {seconds} s</p>
+      <p className="text-label text-muted">{t('Someone is coming.')}</p>
+      <p className="hidden text-body text-muted motion-reduce:block">
+        {t('Closes in {seconds} s', { seconds })}
+      </p>
 
       <div className="mt-9 flex gap-3.5">
         <Button variant="primary" size="xl" icon="check" onClick={onDone} className="flex-[2]">
-          Looks good
+          {t('Looks good')}
         </Button>
         <Button
           variant="secondary"
@@ -145,7 +149,7 @@ export function RequestSentCard({
           aria-busy={deleting}
           className="flex-1 bg-surface"
         >
-          {deleting ? 'Deleting…' : 'Delete'}
+          {deleting ? t('Deleting…') : t('Delete')}
         </Button>
       </div>
     </section>

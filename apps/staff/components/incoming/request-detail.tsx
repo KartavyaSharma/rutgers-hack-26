@@ -34,7 +34,7 @@ export function RequestDetail({
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto px-8 pt-6 pb-5">
           <RequestHeader item={item} />
           <div className="mt-[18px]">
-            <QuoteBlock words={item.words} meta={askedMeta(item)} />
+            <QuoteBlock words={item.words} meta={askedMeta(item)} original={item.original} />
           </div>
           <PlanSection
             plan={item.plan}

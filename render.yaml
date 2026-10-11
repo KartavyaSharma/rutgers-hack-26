@@ -1,5 +1,6 @@
 # Render Blueprint. Web app + Postgres on the free plan.
 # The voice agent runs on LiveKit Cloud by default (see the commented worker below).
+# TODO(cost): in production, run the voice agent on our own EC2 instead of LiveKit-hosted agents ($0.01/min), and use 1-year reserved EC2 and Aurora.
 services:
   - type: web
     name: bell-web

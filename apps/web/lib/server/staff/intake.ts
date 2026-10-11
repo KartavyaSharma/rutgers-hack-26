@@ -13,6 +13,7 @@ import { markMemoryUsed, similarMemories } from './memory'
 import { planTicket } from './planner'
 import { ensureSeed } from './seed'
 import { openTasks } from './store'
+import { languageOf, translateToEnglish } from './translate'
 import { capitalize, errorMessage, newId } from './util'
 
 const CHANNEL: Record<string, RequestChannel> = { typed: 'typed', voice: 'voice' }
@@ -58,8 +59,18 @@ export const ticketFromRequest = async (request: CallRequest): Promise<string> =
     ? shift.staffById.get(patient.nurseId)
     : undefined
 
-  const title = shortWhat(request.staffSummary)
-  const words = request.text?.trim() || title
+  let title = shortWhat(request.staffSummary)
+  // Typed or spoken words in another language: the nurse reads Bell's English, the original stays one tap away.
+  const said = request.text?.trim() ?? ''
+  const language = said ? languageOf(said, request.language) : request.language
+  const english =
+    said && language && language !== 'en' ? await translateToEnglish(said, language) : null
+  const original =
+    said && language && language !== 'en' ? { text: said, translated: english !== null } : undefined
+  const words = english ?? (said || title)
+  // The router's summary can quote the patient's own words; staff lists read in English.
+  const nonLatin = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u
+  if (english && nonLatin.test(title)) title = shortWhat(english)
   const clinical = request.clinical || SAFETY_REASONS.has(request.routeReason ?? '')
   const nurseButton = request.source === 'nurse_button'
   const kind = `${request.team}.${request.category}`
@@ -98,7 +109,7 @@ export const ticketFromRequest = async (request: CallRequest): Promise<string> =
       bed: patient?.location.bed ?? '',
       words,
       channel,
-      language: request.language,
+      language,
       title,
       kind,
       team: result.team,
@@ -114,6 +125,7 @@ export const ticketFromRequest = async (request: CallRequest): Promise<string> =
         confidence: request.confidence,
         routeReason: request.routeReason,
         ...(nurseButton ? { nurseButton } : {}),
+        ...(original ? { original } : {}),
       },
       createdAt: new Date(request.createdAt),
     })

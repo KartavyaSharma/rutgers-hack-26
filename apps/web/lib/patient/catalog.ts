@@ -1,5 +1,5 @@
 import { CHART_OPTIONS, type OptionId, REQUEST_GROUPS, type RequestOption } from '@bell/core/taxonomy'
-import { GROUP_ICON, type IconName } from '@bell/ui'
+import { fillText, GROUP_ICON, type IconName, type Translate } from '@bell/ui'
 import type { Chart } from './chart'
 
 // The eight category buttons, their options, and the chart rules that change them (from the
@@ -55,32 +55,37 @@ export interface CategoryScreen {
 const ML_PER_CUP = 240
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-const foodScreen = (category: Category, chart: Chart): CategoryScreen => {
+const foodScreen = (category: Category, chart: Chart, t: Translate): CategoryScreen => {
   // Nothing by mouth: the eating and drinking options are gone, three safe ones are left.
   if (chart.npo) {
-    return { options: FASTING_OPTIONS, notice: { title: chart.npo.title, body: chart.npo.reason } }
+    return {
+      options: FASTING_OPTIONS,
+      notice: { title: t(chart.npo.title), body: t(chart.npo.reason) },
+    }
   }
   const filtered = chart.diet !== undefined || chart.foodAllergies.length > 0
   const options = category.options.map((o) => {
     if (chart.fluidLimitMl !== undefined) {
-      if (o.id === 'food.water') return { ...o, sub: 'A small cup' }
-      if (o.id === 'food.ice') return { ...o, sub: 'Ice chips, a small cup' }
+      if (o.id === 'food.water') return { ...o, sub: t('A small cup') }
+      if (o.id === 'food.ice') return { ...o, sub: t('Ice chips, a small cup') }
     }
-    if (filtered && o.id === 'food.snack') return { ...o, sub: 'Only what fits your diet' }
-    if (filtered && o.id === 'food.meal') return { ...o, sub: 'From your own menu' }
+    if (filtered && o.id === 'food.snack') return { ...o, sub: t('Only what fits your diet') }
+    if (filtered && o.id === 'food.meal') return { ...o, sub: t('From your own menu') }
     return o
   })
   const tags = [
-    ...(chart.diet ? [chart.diet] : []),
-    ...chart.foodAllergies.map((a) => `No ${a}`),
+    ...(chart.diet ? [t(chart.diet)] : []),
+    ...chart.foodAllergies.map((a) => t('No {food}', { food: t(a) })),
   ]
   return {
     options,
     ...(chart.fluidLimitMl !== undefined
       ? {
           notice: {
-            title: `Drinks are limited to about ${Math.round(chart.fluidLimitMl / ML_PER_CUP)} cups a day`,
-            body: 'Ice counts too.',
+            title: t('Drinks are limited to about {n} cups a day', {
+              n: Math.round(chart.fluidLimitMl / ML_PER_CUP),
+            }),
+            body: t('Ice counts too.'),
           },
         }
       : tags.length > 0
@@ -93,14 +98,18 @@ const foodScreen = (category: Category, chart: Chart): CategoryScreen => {
  * The options a category screen shows, after the chart rules. Hidden options are left out,
  * not crossed out; they are still reachable by voice, which goes to the nurse.
  */
-export const screenFor = (category: Category, chart: Chart): CategoryScreen => {
-  if (category.id === 'food') return foodScreen(category, chart)
+export const screenFor = (
+  category: Category,
+  chart: Chart,
+  t: Translate = fillText,
+): CategoryScreen => {
+  if (category.id === 'food') return foodScreen(category, chart, t)
   if (chart.fallRisk && (category.id === 'move' || category.id === 'bathroom')) {
     return {
       options: category.options,
       notice: {
-        title: 'Please wait for help before you get up',
-        body: 'Someone will come every time. It keeps you from falling.',
+        title: t('Please wait for help before you get up'),
+        body: t('Someone will come every time. It keeps you from falling.'),
       },
     }
   }

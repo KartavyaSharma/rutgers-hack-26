@@ -5,6 +5,7 @@ import {
   type CallRequest,
   isLanguagePreference,
   isOpenStatus,
+  type LanguageCode,
   type LanguagePreference,
   REQUESTS_CANCELLED_RPC,
   type StreamEvent,
@@ -32,10 +33,13 @@ import {
   RequestSentCard,
   RequestSentPanel,
   SomethingElseTile,
+  TextProvider,
   TitleRow,
+  type Translate,
+  useT,
 } from '@bell/ui'
 import { useEffect, useState } from 'react'
-import { callForHelp, requestAction, sendOption } from '@/lib/client/api'
+import { callForHelp, requestAction, resolveRequest, sendOption } from '@/lib/client/api'
 import {
   allSetTitle,
   CHOOSE_LANGUAGE_SUBTITLE,
@@ -63,6 +67,7 @@ import type { PatientInRoom } from '@/lib/patient/chart'
 import { useConversation } from './use-conversation'
 import { useVoiceSession } from './use-voice-session'
 import { useWakePhrase } from './use-wake-phrase'
+import { useScreenText } from '@/lib/patient/screen-text'
 
 const HOME_CARDS = 2
 const FEED_LIMIT = 100
@@ -93,17 +98,16 @@ const newestFirst = (a: CallRequest, b: CallRequest) =>
 const sameDay = (iso: string, now: number) =>
   new Date(iso).toDateString() === new Date(now).toDateString()
 
-const toItem = (request: CallRequest, now: number): MyRequestItem => ({
+const toItem = (request: CallRequest, now: number, t: Translate): MyRequestItem => ({
   id: request.id,
-  label: patientLabel(request),
+  label: patientLabel(request, t),
   icon: requestIcon(request),
   status: request.status,
-  line: statusLine(request.status),
-  when: timeAgo(request.createdAt, now),
+  line: statusLine(request.status, t),
+  when: timeAgo(request.createdAt, now, t),
   nudged: request.nudgedAt !== null,
 })
 
-const TAP_HINT = 'Tap one. Nothing is sent until you do.'
 
 interface RoomScreenProps {
   patient: PatientInRoom
@@ -130,6 +134,7 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
   const [deletingSent, setDeletingSent] = useState(false)
   const [helpBusy, setHelpBusy] = useState(false)
   const [cancellingHelp, setCancellingHelp] = useState(false)
+  const [resolvingHelp, setResolvingHelp] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
@@ -146,7 +151,23 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
     return () => clearInterval(timer)
   }, [])
 
-  const voice = useVoiceSession({ roomId, language, enabled: voiceEnabled })
+  const t = useScreenText(language)
+
+  // The first language Bell hears (other than English) switches the screen from Auto; after
+  // that the patient decides, by voice ("in English, please") or with the Language button.
+  const followVoiceLanguage = (code: LanguageCode, how: 'heard' | 'asked') => {
+    if (code === language || (how === 'heard' && (language !== 'auto' || code === 'en'))) return
+    setLanguage(code)
+    setPickerValue(code)
+    saveRoomLanguage(roomId, code)
+  }
+
+  const voice = useVoiceSession({
+    roomId,
+    language,
+    enabled: voiceEnabled,
+    onLanguage: followVoiceLanguage,
+  })
   const conversation = useConversation({
     mode: voice.mode,
     state: voice.state,
@@ -246,8 +267,8 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
     } catch {
       setDialog({
         kind: 'error',
-        title: "That didn't go through",
-        body: 'Please press the red button on your bed rail.',
+        title: t("That didn't go through"),
+        body: t('Please press the red button on your bed rail.'),
       })
     } finally {
       setHelpBusy(false)
@@ -265,9 +286,31 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
       upsertRequest(await requestAction(emergency.id, 'cancel'))
       if (voice.mode === 'emergency') await voice.stop()
     } catch {
-      setDialog({ kind: 'error', title: "That didn't go through", body: 'Please try again.' })
+      setDialog({
+        kind: 'error',
+        title: t("That didn't go through"),
+        body: t('Please try again.'),
+      })
     } finally {
       setCancellingHelp(false)
+    }
+  }
+
+  // "Resolved by staff": the nurse who came closes the call, and the screen goes with it.
+  const pressResolved = async () => {
+    if (!emergency || resolvingHelp) return
+    setResolvingHelp(true)
+    try {
+      upsertRequest(await resolveRequest(emergency.id))
+      if (voice.mode === 'emergency') await voice.stop()
+    } catch {
+      setDialog({
+        kind: 'error',
+        title: t("That didn't go through"),
+        body: t('Please try again.'),
+      })
+    } finally {
+      setResolvingHelp(false)
     }
   }
 
@@ -290,7 +333,11 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
       setCategory(null)
       setSentCard({ requests: [request], key: Date.now(), spoken: false })
     } catch {
-      setDialog({ kind: 'error', title: "That didn't go through", body: 'Please try again.' })
+      setDialog({
+        kind: 'error',
+        title: t("That didn't go through"),
+        body: t('Please try again.'),
+      })
     } finally {
       setSendingId(null)
     }
@@ -302,7 +349,11 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
       upsertRequest(await requestAction(id, action))
       return true
     } catch {
-      setDialog({ kind: 'error', title: "That didn't go through", body: 'Please try again.' })
+      setDialog({
+        kind: 'error',
+        title: t("That didn't go through"),
+        body: t('Please try again.'),
+      })
       return false
     } finally {
       setBusyId(null)
@@ -320,7 +371,11 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
       if (sentCard.spoken) void voice.notifyAgent(REQUESTS_CANCELLED_RPC, { requestIds })
       setSentCard(null)
       if (results.some((r) => r.status === 'rejected')) {
-        setDialog({ kind: 'error', title: "That didn't go through", body: 'Please try again.' })
+        setDialog({
+        kind: 'error',
+        title: t("That didn't go through"),
+        body: t('Please try again.'),
+      })
       }
     } finally {
       setDeletingSent(false)
@@ -350,7 +405,7 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
       className="flex-1"
       items={sentCard.requests.map((r) => ({
         id: r.id,
-        label: patientLabel(r),
+        label: patientLabel(r, t),
         icon: requestIcon(r),
       }))}
       listening={voice.mode === 'request'}
@@ -363,10 +418,14 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
   ) : null
 
   const helpLabel = helpButtonLabel(language)
-  const greeting = patient.firstName ? `Hi, ${patient.firstName}` : `Room ${roomId}`
-  const where = patient.bed ? `Room ${roomId} · Bed ${patient.bed}` : `Room ${roomId}`
+  const room = t('Room {room}', { room: roomId })
+  const greeting = patient.firstName ? t('Hi, {name}', { name: patient.firstName }) : room
+  const where = patient.bed
+    ? `${room} · ${t('Bed {bed}', { bed: patient.bed })}`
+    : room
 
   return (
+    <TextProvider value={t}>
     <div className="relative mx-auto flex h-dvh min-h-[768px] w-full max-w-[1024px] flex-col gap-4 overflow-hidden bg-bg px-7 pt-6 pb-7 text-ink">
       <AppHeader
         title={greeting}
@@ -411,7 +470,7 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
                   id="my-requests-title"
                   className="font-body text-body font-bold tracking-[0.06em] text-muted uppercase"
                 >
-                  My requests
+                  {t('My requests')}
                 </h2>
                 <Button
                   variant="ghost"
@@ -419,7 +478,7 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
                   onClick={() => setRequestsOpen(true)}
                   className="px-1 text-action-ink underline underline-offset-4"
                 >
-                  {open.length > 0 ? 'See all' : 'See past'}
+                  {open.length > 0 ? t('See all') : t('See past')}
                 </Button>
               </div>
               {homeCards.length > 0 ? (
@@ -428,7 +487,7 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
                     <li key={request.id} className="flex min-h-0 flex-1">
                       <RequestCard
                         className="h-full max-h-[140px]"
-                        label={patientLabel(request)}
+                        label={patientLabel(request, t)}
                         icon={requestIcon(request)}
                         status={request.status}
                         onPress={() => setRequestsOpen(true)}
@@ -439,9 +498,9 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col justify-center gap-2 rounded-md border-2 border-dashed border-border px-6">
                   <p className="font-heading text-heading leading-tight text-muted">
-                    Nothing right now
+                    {t('Nothing right now')}
                   </p>
-                  <p className="text-body text-muted">Your requests will show here.</p>
+                  <p className="text-body text-muted">{t('Your requests will show here.')}</p>
                 </div>
               )}
             </section>
@@ -460,14 +519,14 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
               className="flex-1"
               state={micState}
               onPress={pressMic}
-              {...(category ? { listeningHint: 'Tap an option or speak your request' } : {})}
+              {...(category ? { listeningHint: t('Tap an option or speak your request') } : {})}
             />
           </div>
 
           <main className="flex min-w-0 flex-1 flex-col gap-3.5">
             {sentCard ? (
               <RequestSentPanel
-                label={sentCard.requests.map(patientLabel).join(', ')}
+                label={sentCard.requests.map((r) => patientLabel(r, t)).join(', ')}
                 onOkay={() => setSentCard(null)}
                 onCancel={() => void deleteSent()}
                 cancelling={deletingSent}
@@ -484,13 +543,14 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
                 />
               ) : (
                 <>
-                  <TitleRow title="What's it about?" />
+                  {/* Same height as the emergency button, so the grid starts level with the mic tile. */}
+                  <TitleRow className="h-tile shrink-0" title={t("What's it about?")} />
                   <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-4 gap-3">
                     {CATEGORIES.map((c) => (
                       <CategoryButton
                         key={c.id}
-                        label={c.label}
-                        examples={c.examples}
+                        label={t(c.label)}
+                        examples={t(c.examples)}
                         icon={c.icon}
                         onPress={() => openCategory(c)}
                       />
@@ -505,8 +565,8 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
       <MyRequestsSheet
         open={requestsOpen}
         onOpenChange={setRequestsOpen}
-        openItems={open.map((r) => toItem(r, now))}
-        earlierItems={earlier.map((r) => toItem(r, now))}
+        openItems={open.map((r) => toItem(r, now, t))}
+        earlierItems={earlier.map((r) => toItem(r, now, t))}
         onNudge={(id) => void act(id, 'nudge')}
         onCancel={(id) => void act(id, 'cancel')}
         busyId={busyId}
@@ -516,12 +576,14 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
         open={dialog?.kind === 'nurse'}
         onOpenChange={(isOpen) => !isOpen && setDialog(null)}
         tone="nurse"
-        title="Your nurse has been told"
-        body="They can see your call now. If you feel worse, press the red button on your bed rail."
+        title={t('Your nurse has been told')}
+        body={t(
+          'They can see your call now. If you feel worse, press the red button on your bed rail.',
+        )}
         actions={
           <DialogClose asChild>
             <Button variant="nurse" size="lg">
-              Okay
+              {t('Okay')}
             </Button>
           </DialogClose>
         }
@@ -535,17 +597,17 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
           setLanguageScreen(false)
         }}
         title={dialog?.kind === 'all-set' ? allSetTitle(dialog.language) : ''}
-        body="You can change this any time with the Language button."
+        body={t('You can change this any time with the Language button.')}
         actions={
           <>
             <DialogClose asChild>
               <Button variant="primary" size="lg">
-                Okay
+                {t('Okay')}
               </Button>
             </DialogClose>
             {/* Back: stay on the language screen to pick another one. */}
             <Button variant="secondary" size="lg" onClick={() => setDialog(null)}>
-              Back
+              {t('Back')}
             </Button>
           </>
         }
@@ -563,7 +625,7 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
         actions={
           <DialogClose asChild>
             <Button variant="primary" size="lg">
-              Okay
+              {t('Okay')}
             </Button>
           </DialogClose>
         }
@@ -593,9 +655,12 @@ export function RoomScreen({ patient, voiceEnabled }: RoomScreenProps) {
           onTalk={talkInEmergency}
           onMistake={() => void pressMistake()}
           cancelling={cancellingHelp}
+          onResolved={() => void pressResolved()}
+          resolving={resolvingHelp}
         />
       ) : null}
     </div>
+    </TextProvider>
   )
 }
 
@@ -617,18 +682,19 @@ function CategoryView({
   onOption: (option: PatientOption) => void
   onSomethingElse: () => void
 }) {
-  const screen = screenFor(category, patient.chart)
+  const t = useT()
+  const screen = screenFor(category, patient.chart, t)
   // Few options: fixed-height rows from the top, not stretched over the screen.
   const few = screen.options.length < 4
   return (
     <>
-      <TitleRow title={category.label} onBack={onBack} />
+      <TitleRow title={t(category.label)} onBack={onBack} />
       {screen.notice ? (
         <ChartNotice className="-mt-1" title={screen.notice.title} body={screen.notice.body} />
       ) : screen.tags ? (
         <ChartTags className="-mt-1" tags={screen.tags} />
       ) : listening ? null : (
-        <p className="-mt-1 text-[19px] text-muted">{TAP_HINT}</p>
+        <p className="-mt-1 text-[19px] text-muted">{t('Tap one. Nothing is sent until you do.')}</p>
       )}
       <div
         className={
@@ -640,8 +706,8 @@ function CategoryView({
         {screen.options.map((option) => (
           <OptionTile
             key={option.id}
-            label={option.label}
-            sub={option.sub}
+            label={t(option.label)}
+            sub={t(option.sub)}
             disabled={sendingId !== null}
             onPress={() => onOption(option)}
           />

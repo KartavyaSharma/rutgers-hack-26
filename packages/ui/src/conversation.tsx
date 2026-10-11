@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { cn, focusRing, pressable } from './cn'
 import { Icon, type IconName } from './icon'
 import { RequestPanel } from './request-panel'
+import { type Translate, useT } from './text'
 
 /** Something the voice helper did, shown as a chip under its reply. Never names a team. */
 export interface ConversationAction {
@@ -36,18 +37,19 @@ const CHIP_STYLES: Record<ConversationAction['kind'], string> = {
   nurse: 'bg-nurse-tint text-nurse-ink',
 }
 
-const chipText = (action: ConversationAction): string => {
+const chipText = (action: ConversationAction, t: Translate): string => {
   switch (action.kind) {
     case 'nurse':
-      return 'Nurse called'
+      return t('Nurse called')
     case 'cancelled':
-      return action.label ? `Cancelled · ${action.label}` : 'Cancelled'
+      return action.label ? `${t('Cancelled')} · ${action.label}` : t('Cancelled')
     default:
-      return action.label ? `Sent · ${action.label}` : 'Sent'
+      return action.label ? `${t('Sent')} · ${action.label}` : t('Sent')
   }
 }
 
 export function ActionChip({ action }: { action: ConversationAction }) {
+  const t = useT()
   const icon: IconName = action.kind === 'nurse' ? 'alert' : (action.icon ?? 'check')
   return (
     <li
@@ -57,7 +59,7 @@ export function ActionChip({ action }: { action: ConversationAction }) {
       )}
     >
       <Icon name={icon} className="size-6" />
-      {chipText(action)}
+      {chipText(action, t)}
     </li>
   )
 }
@@ -88,6 +90,7 @@ export function Conversation({
   emptyText = 'Say what you need.',
   className,
 }: ConversationProps) {
+  const t = useT()
   const scroller = useRef<HTMLDivElement>(null)
   const last = items[items.length - 1]
   const lastText = last?.kind === 'message' ? last.text : undefined
@@ -110,7 +113,7 @@ export function Conversation({
     >
       {items.length === 0 ? (
         <p className="flex h-full items-center justify-center text-center text-lead text-muted">
-          {emptyText}
+          {t(emptyText)}
         </p>
       ) : (
         <ol className="flex flex-col gap-4">
@@ -171,6 +174,7 @@ export interface VoiceStatusBarProps {
 
 /** The mic status at the bottom of the conversation (where a chat app has its message box). */
 export function VoiceStatusBar({ status, onPress, className }: VoiceStatusBarProps) {
+  const t = useT()
   const active = status === 'listening' || status === 'speaking'
   return (
     <button
@@ -195,7 +199,7 @@ export function VoiceStatusBar({ status, onPress, className }: VoiceStatusBarPro
         <Icon name="mic" className="size-8" />
       </span>
       <span className="text-lead font-bold" aria-live="polite">
-        {STATUS_WORDS[status]}
+        {t(STATUS_WORDS[status])}
       </span>
     </button>
   )

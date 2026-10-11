@@ -49,6 +49,11 @@ export interface IncomingItem {
   /** needs_ok: waiting for the nurse. handled: Bell sent it on its own (non-clinical) or the nurse approved it. */
   state: 'needs_ok' | 'handled'
   handledNote?: string
+  /**
+   * Set when the patient asked in another language. `words` is then Bell's English translation,
+   * or the patient's own words when Bell could not translate them (`translated` false).
+   */
+  original?: { language: string; words: string; translated: boolean }
 }
 
 export interface PatientRow {

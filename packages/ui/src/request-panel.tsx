@@ -1,5 +1,8 @@
+'use client'
+
 import { cn, focusRing, pressable } from './cn'
 import { Icon } from './icon'
+import { useT } from './text'
 
 export type RequestPanelState = 'idle' | 'connecting' | 'listening' | 'unavailable'
 
@@ -22,6 +25,7 @@ export interface RequestPanelProps {
 
 /** The big "Make a request" card. One tap starts a voice conversation. */
 export function RequestPanel({ state, onPress, hint, className }: RequestPanelProps) {
+  const t = useT()
   const copy = COPY[state]
   const listening = state === 'listening'
   return (
@@ -62,11 +66,14 @@ export function RequestPanel({ state, onPress, hint, className }: RequestPanelPr
       <span
         className={cn('font-heading text-display-xl leading-none', listening ? 'mt-10' : 'mt-3')}
       >
-        {copy.title}
+        {t(copy.title)}
       </span>
       <span className="text-lead text-muted" aria-live="polite">
-        {hint ?? copy.hint}
+        {hint ?? t(copy.hint)}
       </span>
+      {state === 'idle' ? (
+        <span className="-mt-2 text-body text-muted">{t('or just say “Hey Bell”')}</span>
+      ) : null}
     </button>
   )
 }

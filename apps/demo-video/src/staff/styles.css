@@ -1,0 +1,18 @@
+/* The staff app's own theme and Tailwind setup (apps/staff/app/globals.css), as its own build.
+   Inter is loaded by @remotion/google-fonts under its real name, standing in for next/font's
+   --font-inter. */
+@import "../../../staff/app/globals.css";
+@source "../../../staff/components";
+@source "./";
+
+:root {
+  --font-inter: "Inter";
+}
+
+/* Frame-by-frame render: nothing may move on the wall clock. */
+[data-staff-screen] *,
+[data-staff-screen] *::before,
+[data-staff-screen] *::after {
+  transition: none;
+  animation: none;
+}

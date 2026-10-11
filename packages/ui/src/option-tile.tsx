@@ -1,5 +1,8 @@
+'use client'
+
 import { cn, focusRing, pressable } from './cn'
 import { Icon } from './icon'
+import { useT } from './text'
 
 export interface OptionTileProps {
   label: string
@@ -38,6 +41,7 @@ export interface SomethingElseTileProps {
 
 /** Last tile on every category screen. It will become typing; for now it opens the mic. */
 export function SomethingElseTile({ onPress, className }: SomethingElseTileProps) {
+  const t = useT()
   return (
     <button
       type="button"
@@ -51,8 +55,10 @@ export function SomethingElseTile({ onPress, className }: SomethingElseTileProps
     >
       <Icon name="keyboard" className="size-7" />
       <span className="flex flex-col">
-        <span className="text-[22px] leading-tight font-bold">Something else</span>
-        <span className="mt-[3px] text-[16px] leading-tight text-muted">Say it out loud or tap here to type</span>
+        <span className="text-[22px] leading-tight font-bold">{t('Something else')}</span>
+        <span className="mt-[3px] text-[16px] leading-tight text-muted">
+          {t('Say it out loud or tap here to type')}
+        </span>
       </span>
     </button>
   )

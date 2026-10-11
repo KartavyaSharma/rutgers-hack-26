@@ -1,0 +1,31 @@
+/* The tablet's own tokens and Tailwind mapping, the same order as apps/web/app/globals.css.
+   Atkinson Hyperlegible is loaded by @remotion/google-fonts under its real family name,
+   which tokens.css already points at, so fonts.css (the next/font override) is left out. */
+@import "tailwindcss";
+@import "@bell/ui/tokens.css";
+@import "@bell/ui/theme.css";
+@source "../../../packages/ui/src";
+@source "./";
+
+@layer base {
+  body {
+    @apply bg-bg font-body text-body text-ink antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-heading;
+    font-weight: var(--heading-weight, 500);
+    text-wrap: balance;
+  }
+}
+
+/* Remotion renders frame by frame, so nothing may move on the wall clock. Transitions are off
+   (unlayered, so this wins over the components' utilities), and the CSS keyframe animations
+   (ripples, the drain) are driven by <CssClock>. */
+[data-screen] *,
+[data-screen] *::before,
+[data-screen] *::after {
+  transition: none;
+}

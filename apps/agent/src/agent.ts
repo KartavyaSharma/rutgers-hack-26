@@ -18,11 +18,14 @@
 // Patient-facing speech never names a team. Transcripts are never logged.
 import {
   FLUX_LANGUAGES,
+  isLanguageCode,
   isLanguagePreference,
   LANGUAGES,
   type LanguagePreference,
   patientMessage,
+  HEARD_LANGUAGE_ATTRIBUTE,
   REQUESTS_CANCELLED_RPC,
+  SCREEN_LANGUAGE_ATTRIBUTE,
 } from '@bell/core'
 import {
   type ChatContext,
@@ -139,6 +142,7 @@ export class BellAgent extends voice.Agent {
     phrases: PhraseCache,
     options: { raceAfterMs?: number } = {},
   ) {
+    // TODO(cost): cache the fixed instructions and tool list (~2,200 tokens resent every turn), or shorten them.
     super({ instructions: buildInstructions(language), tools: buildTools(bell) })
     this.#bell = bell
     this.#phrases = phrases
@@ -159,7 +163,10 @@ export class BellAgent extends voice.Agent {
     const redFlag = await this.#bell.redFlagCheck(text)
     if (!redFlag) {
       // chatCtx is this reply's own copy, so the note does not pile up in the history.
-      const note = languageNote(this.#roomLanguage, this.#bell.heardLanguage)
+      const chosen = this.#bell.chosenLanguage
+      const note = chosen
+        ? languageNote('auto', chosen)
+        : languageNote(this.#roomLanguage, this.#bell.heardLanguage)
       if (note) chatCtx.addMessage({ role: 'user', content: note })
       return
     }
@@ -337,6 +344,22 @@ function buildTools(bell: BellTools) {
       execute: async (args, { ctx }) => {
         toolStarted(ctx.session)
         void bell.callMyNurse(args, ctx.speechHandle?.id)
+        return undefined
+      },
+    }),
+    set_screen_language: llm.tool({
+      description:
+        'Switch the call bell screen (and your replies) to another language when the patient asks, ' +
+        'e.g. "can you show it in English", "说中文". Say only "Okay." in the new language.',
+      parameters: z.object({
+        language: z.string().describe('Language code, e.g. "en", "zh", "es".'),
+      }),
+      execute: async ({ language }) => {
+        if (!isLanguageCode(language)) return undefined
+        bell.chooseLanguage(language)
+        void getJobContext()
+          .room.localParticipant?.setAttributes({ [SCREEN_LANGUAGE_ATTRIBUTE]: language })
+          .catch(() => {})
         return undefined
       },
     }),
@@ -645,9 +668,17 @@ export default defineAgent({
       phrases.say(session, patientMessage('say_again', bell.messageLanguage))
     }
     const warmed = new Set<string>([startLanguage])
+    let heardShown: string | undefined
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
       if (!ev.isFinal) return
       bell.heard({ language: ev.language })
+      // The tablet switches its screen to the first non-English language it hears.
+      if (isLanguageCode(ev.language) && ev.language !== heardShown) {
+        heardShown = ev.language
+        void ctx.room.localParticipant
+          ?.setAttributes({ [HEARD_LANGUAGE_ATTRIBUTE]: ev.language })
+          .catch(() => {})
+      }
       followLanguageForInterruptions(session, ev.language)
       if (ev.language && !warmed.has(ev.language)) {
         warmed.add(ev.language)

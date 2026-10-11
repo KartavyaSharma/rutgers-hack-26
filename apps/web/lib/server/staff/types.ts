@@ -37,6 +37,8 @@ export interface TicketDetails {
   diet?: { restricted: boolean; text: string }
   twoPeople?: boolean
   cleaning?: { disinfect: boolean; where?: string }
+  /** The patient's own words when they asked in another language (the ticket's `words` is English). */
+  original?: { text: string; translated: boolean }
 }
 
 /** Display overrides for a task, cleared when someone moves it. */

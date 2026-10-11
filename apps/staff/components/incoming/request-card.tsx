@@ -29,7 +29,10 @@ export function RequestCard({
       <span className="flex min-w-0 items-baseline gap-2 text-sm whitespace-nowrap">
         <b className="shrink-0">{item.patientName}</b>
         <span className={cn('min-w-0 truncate text-[13px]', sub)}>{item.roomLabel}</span>
-        <span className={cn('ml-auto shrink-0 text-[13px]', sub)}>{ago(item.askedAt)}</span>
+        <span className={cn('ml-auto shrink-0 text-[13px]', sub)}>
+          {item.original ? `${item.original.language} · ` : ''}
+          {ago(item.askedAt)}
+        </span>
       </span>
       <span className="text-sm leading-[1.35] font-semibold">“{item.words}”</span>
       <span className={cn('flex items-center gap-2 text-xs', sub)}>

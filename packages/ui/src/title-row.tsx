@@ -1,5 +1,8 @@
+'use client'
+
 import { cn, focusRing, pressable } from './cn'
 import { Icon } from './icon'
+import { useT } from './text'
 
 export interface TitleRowProps {
   title: string
@@ -10,13 +13,14 @@ export interface TitleRowProps {
 
 /** Screen title, with a back button on category screens. */
 export function TitleRow({ title, onBack, className }: TitleRowProps) {
+  const t = useT()
   return (
     <div className={cn('flex min-h-tap items-center gap-3', className)}>
       {onBack ? (
         <button
           type="button"
           onClick={onBack}
-          aria-label="Back"
+          aria-label={t('Back')}
           className={cn(
             'flex size-tap shrink-0 items-center justify-center rounded-pill border-2 border-border bg-surface text-ink',
             pressable,

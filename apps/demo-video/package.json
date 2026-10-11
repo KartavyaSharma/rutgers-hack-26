@@ -1,0 +1,32 @@
+{
+  "name": "@bell/demo-video",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "studio:staff": "pnpm run clips && remotion studio src/staff/index.ts",
+    "clips": "remotion render src/index.ts RuthTablet public/generated/ruth-tablet.mp4 --crf=12",
+    "render": "remotion render src/index.ts PatientDemo out/bell-patient-demo.mp4",
+    "render:staff": "pnpm run clips && remotion render src/staff/index.ts StaffDemo out/bell-staff-demo.mp4",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bell/core": "workspace:*",
+    "@bell/ui": "workspace:*",
+    "@remotion/cli": "4.0.528",
+    "@remotion/google-fonts": "4.0.528",
+    "@remotion/tailwind-v4": "4.0.528",
+    "lucide-react": "1.55.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.528"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.2.0",
+    "typescript": "6.0.3"
+  }
+}
